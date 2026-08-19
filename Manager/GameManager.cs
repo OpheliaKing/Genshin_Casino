@@ -9,6 +9,7 @@ namespace SHIN
     {
         [SerializeField] private ResourceManager _resourceManager;
         [SerializeField] private UIManager _uiManager;
+        [SerializeField] private InGameManager _inGameManager;
 
         public ResourceManager ResourceManager
         {
@@ -26,6 +27,36 @@ namespace SHIN
                 ManagerBase.EnsureManager(transform, ref _uiManager);
                 return _uiManager;
             }
+        }
+
+        public InGameManager InGameManager
+        {
+            get
+            {
+                ManagerBase.EnsureManager(transform, ref _inGameManager);
+                return _inGameManager;
+            }
+        }
+
+        private void Start()
+        {
+            TestShowOpponentSelectUI();
+        }
+
+        private void TestShowOpponentSelectUI()
+        {
+            UIManager.Show(PublicVariable.Address.OpponentSelectUI);
+        }
+
+        public void GameStart(OpponentData opponentData)
+        {
+            if (opponentData == null)
+            {
+                Debug.LogError("[GameManager] GameStart opponentData가 없습니다.");
+                return;
+            }
+
+            InGameManager.StartMatch(opponentData);
         }
     }
 }
