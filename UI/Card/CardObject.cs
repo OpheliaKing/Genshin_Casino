@@ -1,4 +1,6 @@
+using System.Collections.Generic;
 using System.Threading.Tasks;
+using TMPro;
 using UnityEngine;
 using UnityEngine.U2D;
 using UnityEngine.UI;
@@ -11,7 +13,7 @@ namespace SHIN
         private const string BackSpriteKey = "sprite_card_base_002";
 
         [SerializeField] private Image _image;
-        [SerializeField] private Text _label;
+        [SerializeField] private List<TextMeshProUGUI> _labels = new();
 
         private PokerCard _card;
         private bool _faceUp;
@@ -24,7 +26,7 @@ namespace SHIN
             if (_image == null)
                 _image = GetComponent<Image>();
 
-            EnsureLabel();
+            EnsureLabels();
         }
 
         public void Bind(PokerCard card, bool faceUp)
@@ -54,36 +56,62 @@ namespace SHIN
             if (_image != null)
                 _image.sprite = _faceUp ? (_frontSprite != null ? _frontSprite : _image.sprite) : (_backSprite != null ? _backSprite : _image.sprite);
 
-            if (_label != null)
+            var text = _faceUp ? _card.DisplayName : string.Empty;
+            var color = _card.Suit is CardSuit.Hearts or CardSuit.Diamonds
+                ? new Color(0.75f, 0.12f, 0.12f)
+                : Color.black;
+
+            if (_labels == null)
+                return;
+
+            for (var i = 0; i < _labels.Count; i++)
             {
-                _label.enabled = _faceUp;
-                _label.text = _faceUp ? _card.DisplayName : string.Empty;
-                _label.color = _card.Suit is CardSuit.Hearts or CardSuit.Diamonds
-                    ? new Color(0.75f, 0.12f, 0.12f)
-                    : Color.black;
+                var label = _labels[i];
+                if (label == null)
+                    continue;
+
+                label.enabled = _faceUp;
+                label.text = text;
+                label.color = color;
             }
         }
 
-        private void EnsureLabel()
+        private void EnsureLabels()
         {
-            if (_label != null)
+            _labels ??= new List<TextMeshProUGUI>();
+            _labels.RemoveAll(label => label == null);
+            if (_labels.Count > 0)
                 return;
 
-            var go = new GameObject("Label");
+            var existing = GetComponentsInChildren<TextMeshProUGUI>(true);
+            for (var i = 0; i < existing.Length; i++)
+                _labels.Add(existing[i]);
+
+            if (_labels.Count > 0)
+                return;
+
+            _labels.Add(CreateLabel("Label", Quaternion.identity));
+            _labels.Add(CreateLabel("LabelInverted", Quaternion.Euler(0f, 0f, 180f)));
+        }
+
+        private TextMeshProUGUI CreateLabel(string name, Quaternion rotation)
+        {
+            var go = new GameObject(name);
             go.transform.SetParent(transform, false);
             var rect = go.AddComponent<RectTransform>();
             rect.anchorMin = Vector2.zero;
             rect.anchorMax = Vector2.one;
             rect.offsetMin = new Vector2(8f, 8f);
             rect.offsetMax = new Vector2(-8f, -8f);
+            rect.localRotation = rotation;
 
-            _label = go.AddComponent<Text>();
-            _label.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            if (_label.font == null)
-                _label.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
-            _label.fontSize = 32;
-            _label.alignment = TextAnchor.UpperLeft;
-            _label.raycastTarget = false;
+            var label = go.AddComponent<TextMeshProUGUI>();
+            label.fontSize = 28;
+            label.alignment = TextAlignmentOptions.TopLeft;
+            label.raycastTarget = false;
+            label.enableWordWrapping = false;
+            label.overflowMode = TextOverflowModes.Overflow;
+            return label;
         }
 
         private static async Task EnsureSpritesAsync()

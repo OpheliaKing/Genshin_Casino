@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -8,33 +9,27 @@ namespace SHIN
     public class InGameUI : UIBase
     {
         [SerializeField] private Transform _opponentCharacterParent;
-        [SerializeField] private Transform _playerCardParent;
-        [SerializeField] private Transform _opponentCardParent;
-        [SerializeField] private Transform _communityCardParent;
-        [SerializeField] private Transform _playerInputRoot;
+        [SerializeField] private Transform[] _playerCardSlots;
+        [SerializeField] private Transform[] _opponentCardSlots;
+        [SerializeField] private Transform[] _communityCardSlots;
+        [SerializeField] private TextMeshProUGUI _statusText;
+        [SerializeField] private TextMeshProUGUI _potText;
+        [SerializeField] private Button _foldButton;
+        [SerializeField] private Button _callButton;
+        [SerializeField] private Button _raiseButton;
 
         private GameObject _opponentModel;
         private readonly List<GameObject> _spawnedCards = new();
         private readonly List<CardObject> _playerCards = new();
         private readonly List<CardObject> _opponentCards = new();
         private readonly List<CardObject> _communityCards = new();
-
-        private Text _statusText;
-        private Text _potText;
-        private Button _foldButton;
-        private Button _callButton;
-        private Button _raiseButton;
         private InGameManager _match;
 
         public async Task SetupAsync(OpponentData opponentData)
         {
             ClearOpponentModel();
-            EnsureHud();
-            EnsureCardLayout(_playerCardParent);
-            EnsureCardLayout(_opponentCardParent);
-            EnsureCardLayout(_communityCardParent);
-            HideExistingCards(_playerCardParent);
-            HideExistingCards(_opponentCardParent);
+            HideExistingCardsInSlots(_playerCardSlots);
+            HideExistingCardsInSlots(_opponentCardSlots);
 
             if (opponentData == null || _opponentCharacterParent == null || string.IsNullOrEmpty(opponentData.modelPath))
             {
@@ -107,9 +102,9 @@ namespace SHIN
             if (this == null)
                 return;
 
-            await SpawnCardsAsync(playerHole, _playerCardParent, _playerCards, true);
-            await SpawnCardsAsync(opponentHole, _opponentCardParent, _opponentCards, revealOpponent);
-            await SpawnCardsAsync(board, _communityCardParent, _communityCards, true);
+            await SpawnCardsAsync(playerHole, _playerCardSlots, _playerCards, true);
+            await SpawnCardsAsync(opponentHole, _opponentCardSlots, _opponentCards, revealOpponent);
+            await SpawnCardsAsync(board, _communityCardSlots, _communityCards, true);
         }
 
         public void RevealOpponentCards()
@@ -148,23 +143,31 @@ namespace SHIN
 
         private async Task SpawnCardsAsync(
             IReadOnlyList<PokerCard> cards,
-            Transform parent,
+            Transform[] slots,
             List<CardObject> bucket,
             bool faceUp)
         {
             bucket.Clear();
-            if (cards == null || parent == null)
+            if (cards == null || slots == null)
                 return;
 
             var resourceManager = GameManager.Instance?.ResourceManager;
             if (resourceManager == null)
                 return;
 
-            for (var i = 0; i < cards.Count; i++)
+            var count = Mathf.Min(cards.Count, slots.Length);
+            for (var i = 0; i < count; i++)
             {
+                var slot = slots[i];
+                if (slot == null)
+                {
+                    Debug.LogError($"[InGameUI] 카드 슬롯 {i}이 비어 있습니다.");
+                    continue;
+                }
+
                 var instance = await resourceManager.InstantiateAsync(
                     PublicVariable.Address.CardItem,
-                    parent,
+                    slot,
                     startInactive: false);
 
                 if (this == null)
@@ -177,7 +180,7 @@ namespace SHIN
                 if (instance == null)
                     continue;
 
-                ResetLocalTransform(instance.transform);
+                FitToSlot(instance.transform);
                 _spawnedCards.Add(instance);
 
                 var cardObject = instance.GetComponent<CardObject>();
@@ -211,104 +214,46 @@ namespace SHIN
             await Task.Yield();
         }
 
-        private void EnsureHud()
+        private static void HideExistingCardsInSlots(Transform[] slots)
         {
-            var root = _playerInputRoot != null ? _playerInputRoot : transform;
-            if (_statusText != null)
+            if (slots == null)
                 return;
 
-            var hud = CreateUiObject("PokerHud", root);
-            var hudRect = hud.GetComponent<RectTransform>();
-            hudRect.anchorMin = new Vector2(0.05f, 0.08f);
-            hudRect.anchorMax = new Vector2(0.95f, 0.92f);
-            hudRect.offsetMin = Vector2.zero;
-            hudRect.offsetMax = Vector2.zero;
-
-            var layout = hud.AddComponent<VerticalLayoutGroup>();
-            layout.spacing = 16f;
-            layout.childAlignment = TextAnchor.UpperCenter;
-            layout.childForceExpandHeight = false;
-            layout.childForceExpandWidth = true;
-            layout.padding = new RectOffset(24, 24, 24, 24);
-
-            _statusText = CreateText(hud.transform, "Status", 28);
-            _potText = CreateText(hud.transform, "Pot", 24);
-            _foldButton = CreateButton(hud.transform, "폴드");
-            _callButton = CreateButton(hud.transform, "체크");
-            _raiseButton = CreateButton(hud.transform, "벳");
-        }
-
-        private static void HideExistingCards(Transform parent)
-        {
-            if (parent == null)
-                return;
-
-            for (var i = 0; i < parent.childCount; i++)
+            for (var i = 0; i < slots.Length; i++)
             {
-                var child = parent.GetChild(i);
-                if (child.GetComponent<CardObject>() != null)
-                    child.gameObject.SetActive(false);
+                var slot = slots[i];
+                if (slot == null)
+                    continue;
+
+                for (var c = 0; c < slot.childCount; c++)
+                {
+                    var child = slot.GetChild(c);
+                    if (child.GetComponent<CardObject>() != null)
+                        child.gameObject.SetActive(false);
+                }
             }
         }
 
-        private static void EnsureCardLayout(Transform parent)
+        private static void FitToSlot(Transform target)
         {
-            if (parent == null)
+            target.localRotation = Quaternion.identity;
+            target.localScale = Vector3.one;
+
+            if (target is not RectTransform rect)
+            {
+                target.localPosition = Vector3.zero;
                 return;
+            }
 
-            var layout = parent.GetComponent<HorizontalLayoutGroup>();
-            if (layout == null)
-                layout = parent.gameObject.AddComponent<HorizontalLayoutGroup>();
-
-            layout.childAlignment = TextAnchor.MiddleCenter;
-            layout.childForceExpandWidth = false;
-            layout.childForceExpandHeight = false;
-            layout.spacing = 12f;
-            layout.childControlWidth = false;
-            layout.childControlHeight = false;
-        }
-
-        private static GameObject CreateUiObject(string name, Transform parent)
-        {
-            var go = new GameObject(name, typeof(RectTransform));
-            go.transform.SetParent(parent, false);
-            return go;
-        }
-
-        private static Text CreateText(Transform parent, string name, int fontSize)
-        {
-            var go = CreateUiObject(name, parent);
-            var layout = go.AddComponent<LayoutElement>();
-            layout.preferredHeight = 80f;
-            var text = go.AddComponent<Text>();
-            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            if (text.font == null)
-                text.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
-            text.fontSize = fontSize;
-            text.alignment = TextAnchor.MiddleCenter;
-            text.color = Color.white;
-            text.horizontalOverflow = HorizontalWrapMode.Wrap;
-            text.verticalOverflow = VerticalWrapMode.Overflow;
-            return text;
-        }
-
-        private static Button CreateButton(Transform parent, string label)
-        {
-            var go = CreateUiObject(label, parent);
-            var layout = go.AddComponent<LayoutElement>();
-            layout.preferredHeight = 72f;
-            var image = go.AddComponent<Image>();
-            image.color = new Color(0.18f, 0.12f, 0.08f, 0.92f);
-            var button = go.AddComponent<Button>();
-            var text = CreateText(go.transform, "Label", 26);
-            text.text = label;
-            text.raycastTarget = false;
-            return button;
+            rect.anchorMin = new Vector2(0.5f, 0.5f);
+            rect.anchorMax = new Vector2(0.5f, 0.5f);
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.anchoredPosition = Vector2.zero;
         }
 
         private static void SetButtonLabel(Button button, string label)
         {
-            var text = button.GetComponentInChildren<Text>();
+            var text = button.GetComponentInChildren<TextMeshProUGUI>();
             if (text != null)
                 text.text = label;
         }
