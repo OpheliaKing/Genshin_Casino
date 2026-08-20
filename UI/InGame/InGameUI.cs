@@ -1,8 +1,8 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using DG.Tweening;
 using TMPro;
 using UnityEngine;
-using UnityEngine.UI;
 
 namespace SHIN
 {
@@ -14,9 +14,11 @@ namespace SHIN
         [SerializeField] private Transform[] _communityCardSlots;
         [SerializeField] private TextMeshProUGUI _statusText;
         [SerializeField] private TextMeshProUGUI _potText;
-        [SerializeField] private Button _foldButton;
-        [SerializeField] private Button _callButton;
-        [SerializeField] private Button _raiseButton;
+        [SerializeField] private InGameStackUI _playerStackUI;
+        [SerializeField] private InGameStackUI _opponentStackUI;
+        [SerializeField] private InGameButton _foldButton;
+        [SerializeField] private InGameButton _callButton;
+        [SerializeField] private InGameButton _raiseButton;
 
         private GameObject _opponentModel;
         private readonly List<GameObject> _spawnedCards = new();
@@ -24,6 +26,11 @@ namespace SHIN
         private readonly List<CardObject> _opponentCards = new();
         private readonly List<CardObject> _communityCards = new();
         private InGameManager _match;
+        private int _displayedPot;
+        private bool _hasDisplayedPot;
+        private Tween _potTween;
+
+        private const float PotTweenDuration = 0.45f;
 
         public async Task SetupAsync(OpponentData opponentData)
         {
@@ -58,6 +65,12 @@ namespace SHIN
 
             _opponentModel = instance;
             ResetLocalTransform(instance.transform);
+
+            if (_playerStackUI != null)
+                await _playerStackUI.SetIconAsync(PublicVariable.Address.PlayerIcon, PublicVariable.Address.CharacterAtlas);
+
+            if (_opponentStackUI != null && !string.IsNullOrEmpty(opponentData.iconPath))
+                await _opponentStackUI.SetIconAsync(opponentData.iconPath, opponentData.atlasAddress);
         }
 
         public void BindMatch(InGameManager match)
@@ -65,14 +78,14 @@ namespace SHIN
             _match = match;
             if (_foldButton != null)
             {
-                _foldButton.onClick.RemoveAllListeners();
-                _foldButton.onClick.AddListener(() => _match?.OnPlayerAction(PokerAction.Fold));
+                _foldButton.RemoveAllClickListeners();
+                _foldButton.AddClickListener(() => _match?.OnPlayerAction(PokerAction.Fold));
             }
 
             if (_callButton != null)
             {
-                _callButton.onClick.RemoveAllListeners();
-                _callButton.onClick.AddListener(() =>
+                _callButton.RemoveAllClickListeners();
+                _callButton.AddClickListener(() =>
                 {
                     if (_match == null)
                         return;
@@ -82,8 +95,8 @@ namespace SHIN
 
             if (_raiseButton != null)
             {
-                _raiseButton.onClick.RemoveAllListeners();
-                _raiseButton.onClick.AddListener(() =>
+                _raiseButton.RemoveAllClickListeners();
+                _raiseButton.AddClickListener(() =>
                 {
                     if (_match == null)
                         return;
@@ -118,26 +131,28 @@ namespace SHIN
             if (_statusText != null)
                 _statusText.text = status;
 
-            if (_potText != null)
-                _potText.text = $"팟 {pot}\n나 {playerStack}  /  상대 {opponentStack}";
+            TweenPot(pot);
+
+            _playerStackUI?.SetGold(playerStack);
+            _opponentStackUI?.SetGold(opponentStack);
 
             var interactable = playerTurn && !matchOver;
             if (_foldButton != null)
             {
-                _foldButton.interactable = interactable && toCall > 0;
-                SetButtonLabel(_foldButton, "폴드");
+                _foldButton.Interactable = interactable && toCall > 0;
+                _foldButton.SetLabel("폴드");
             }
 
             if (_callButton != null)
             {
-                _callButton.interactable = interactable;
-                SetButtonLabel(_callButton, toCall > 0 ? $"콜 {toCall}" : "체크");
+                _callButton.Interactable = interactable;
+                _callButton.SetLabel(toCall > 0 ? $"콜 {toCall}" : "체크");
             }
 
             if (_raiseButton != null)
             {
-                _raiseButton.interactable = interactable;
-                SetButtonLabel(_raiseButton, toCall > 0 ? "레이즈" : "벳");
+                _raiseButton.Interactable = interactable;
+                _raiseButton.SetLabel(toCall > 0 ? "레이즈" : "벳");
             }
         }
 
@@ -251,13 +266,6 @@ namespace SHIN
             rect.anchoredPosition = Vector2.zero;
         }
 
-        private static void SetButtonLabel(Button button, string label)
-        {
-            var text = button.GetComponentInChildren<TextMeshProUGUI>();
-            if (text != null)
-                text.text = label;
-        }
-
         private void ClearOpponentModel()
         {
             if (_opponentModel == null)
@@ -270,6 +278,34 @@ namespace SHIN
                 Destroy(_opponentModel);
 
             _opponentModel = null;
+        }
+
+        private void TweenPot(int pot)
+        {
+            if (_potText == null)
+                return;
+
+            if (!_hasDisplayedPot)
+            {
+                _hasDisplayedPot = true;
+                _displayedPot = pot;
+                _potText.text = pot.ToString();
+                return;
+            }
+
+            if (_displayedPot == pot)
+                return;
+
+            _potTween?.Kill();
+            _potTween = DOTween
+                .To(() => _displayedPot, value =>
+                {
+                    _displayedPot = value;
+                    _potText.text = value.ToString();
+                }, pot, PotTweenDuration)
+                .SetEase(Ease.OutCubic)
+                .SetUpdate(true)
+                .SetLink(gameObject);
         }
 
         private static void ResetLocalTransform(Transform target)
@@ -287,6 +323,8 @@ namespace SHIN
 
         private void OnDestroy()
         {
+            _potTween?.Kill();
+            _potTween = null;
             _ = ClearCardsAsync();
             ClearOpponentModel();
         }

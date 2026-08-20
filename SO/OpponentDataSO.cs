@@ -13,6 +13,7 @@ namespace SHIN
         public string atlasAddress;
         public string spriteName;
         public string modelPath;
+        public string iconPath;
         public int haveGold;
     }
 

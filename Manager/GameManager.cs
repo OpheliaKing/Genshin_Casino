@@ -10,6 +10,7 @@ namespace SHIN
         [SerializeField] private ResourceManager _resourceManager;
         [SerializeField] private UIManager _uiManager;
         [SerializeField] private InGameManager _inGameManager;
+        [SerializeField] private SoundManager _soundManager;
 
         public ResourceManager ResourceManager
         {
@@ -35,6 +36,15 @@ namespace SHIN
             {
                 ManagerBase.EnsureManager(transform, ref _inGameManager);
                 return _inGameManager;
+            }
+        }
+
+        public SoundManager SoundManager
+        {
+            get
+            {
+                ManagerBase.EnsureManager(transform, ref _soundManager);
+                return _soundManager;
             }
         }
 

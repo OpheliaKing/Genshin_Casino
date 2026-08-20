@@ -36,30 +36,26 @@ namespace SHIN
         public CardRank Rank { get; }
         public CardSuit Suit { get; }
 
-        public string DisplayName
+        public string RankText => Rank switch
         {
-            get
-            {
-                var rank = Rank switch
-                {
-                    CardRank.Ace => "A",
-                    CardRank.King => "K",
-                    CardRank.Queen => "Q",
-                    CardRank.Jack => "J",
-                    CardRank.Ten => "10",
-                    _ => ((int)Rank).ToString()
-                };
+            CardRank.Ace => "A",
+            CardRank.King => "K",
+            CardRank.Queen => "Q",
+            CardRank.Jack => "J",
+            CardRank.Ten => "10",
+            _ => ((int)Rank).ToString()
+        };
 
-                var suit = Suit switch
-                {
-                    CardSuit.Spades => "♠",
-                    CardSuit.Hearts => "♥",
-                    CardSuit.Diamonds => "♦",
-                    _ => "♣"
-                };
+        public string SuitSymbol => Suit switch
+        {
+            CardSuit.Spades => "♠",
+            CardSuit.Hearts => "♥",
+            CardSuit.Diamonds => "♦",
+            _ => "♣"
+        };
 
-                return rank + suit;
-            }
-        }
+        public string DisplayName => RankText + SuitSymbol;
+
+        public string CornerText => RankText;
     }
 }

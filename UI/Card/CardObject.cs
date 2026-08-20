@@ -11,9 +11,12 @@ namespace SHIN
     {
         private const string FrontSpriteKey = "sprite_card_base_001";
         private const string BackSpriteKey = "sprite_card_base_002";
+        private const float CornerFontSize = 36f;
+        private const float CenterSuitFontSize = 64f;
 
         [SerializeField] private Image _image;
-        [SerializeField] private List<TextMeshProUGUI> _labels = new();
+        [SerializeField] private List<TextMeshProUGUI> _cornerLabels = new();
+        [SerializeField] private TextMeshProUGUI _centerSuit;
 
         private PokerCard _card;
         private bool _faceUp;
@@ -56,62 +59,131 @@ namespace SHIN
             if (_image != null)
                 _image.sprite = _faceUp ? (_frontSprite != null ? _frontSprite : _image.sprite) : (_backSprite != null ? _backSprite : _image.sprite);
 
-            var text = _faceUp ? _card.DisplayName : string.Empty;
             var color = _card.Suit is CardSuit.Hearts or CardSuit.Diamonds
-                ? new Color(0.75f, 0.12f, 0.12f)
-                : Color.black;
+                ? new Color(0.82f, 0.12f, 0.14f)
+                : new Color(0.08f, 0.08f, 0.1f);
 
-            if (_labels == null)
-                return;
+            var cornerText = _faceUp ? _card.CornerText : string.Empty;
+            var suitText = _faceUp ? _card.SuitSymbol : string.Empty;
 
-            for (var i = 0; i < _labels.Count; i++)
+            if (_cornerLabels != null)
             {
-                var label = _labels[i];
-                if (label == null)
-                    continue;
+                for (var i = 0; i < _cornerLabels.Count; i++)
+                {
+                    var label = _cornerLabels[i];
+                    if (label == null)
+                        continue;
 
-                label.enabled = _faceUp;
-                label.text = text;
-                label.color = color;
+                    label.enabled = _faceUp;
+                    label.text = cornerText;
+                    label.color = color;
+                    label.fontSize = CornerFontSize;
+                }
+            }
+
+            if (_centerSuit != null)
+            {
+                _centerSuit.enabled = _faceUp;
+                _centerSuit.text = suitText;
+                _centerSuit.color = color;
+                _centerSuit.fontSize = CenterSuitFontSize;
             }
         }
 
         private void EnsureLabels()
         {
-            _labels ??= new List<TextMeshProUGUI>();
-            _labels.RemoveAll(label => label == null);
-            if (_labels.Count > 0)
-                return;
+            _cornerLabels ??= new List<TextMeshProUGUI>();
+            _cornerLabels.RemoveAll(label => label == null);
 
-            var existing = GetComponentsInChildren<TextMeshProUGUI>(true);
-            for (var i = 0; i < existing.Length; i++)
-                _labels.Add(existing[i]);
+            if (_cornerLabels.Count == 0)
+            {
+                var existing = GetComponentsInChildren<TextMeshProUGUI>(true);
+                for (var i = 0; i < existing.Length; i++)
+                {
+                    if (existing[i] != null && existing[i] != _centerSuit && existing[i].name != "CenterSuit")
+                        _cornerLabels.Add(existing[i]);
+                }
+            }
 
-            if (_labels.Count > 0)
-                return;
+            if (_cornerLabels.Count == 0)
+            {
+                _cornerLabels.Add(CreateCornerLabel("Label", Quaternion.identity));
+                _cornerLabels.Add(CreateCornerLabel("LabelInverted", Quaternion.Euler(0f, 0f, 180f)));
+            }
 
-            _labels.Add(CreateLabel("Label", Quaternion.identity));
-            _labels.Add(CreateLabel("LabelInverted", Quaternion.Euler(0f, 0f, 180f)));
+            if (_centerSuit == null)
+            {
+                var center = transform.Find("CenterSuit");
+                if (center != null)
+                    _centerSuit = center.GetComponent<TextMeshProUGUI>();
+            }
+
+            if (_centerSuit == null)
+                _centerSuit = CreateCenterSuitLabel();
+
+            for (var i = 0; i < _cornerLabels.Count; i++)
+                ConfigureCornerLabel(_cornerLabels[i]);
+
+            ConfigureCenterSuitLabel(_centerSuit);
         }
 
-        private TextMeshProUGUI CreateLabel(string name, Quaternion rotation)
+        private TextMeshProUGUI CreateCornerLabel(string name, Quaternion rotation)
         {
             var go = new GameObject(name);
             go.transform.SetParent(transform, false);
             var rect = go.AddComponent<RectTransform>();
             rect.anchorMin = Vector2.zero;
             rect.anchorMax = Vector2.one;
-            rect.offsetMin = new Vector2(8f, 8f);
-            rect.offsetMax = new Vector2(-8f, -8f);
+            rect.offsetMin = new Vector2(10f, 10f);
+            rect.offsetMax = new Vector2(-10f, -10f);
             rect.localRotation = rotation;
 
             var label = go.AddComponent<TextMeshProUGUI>();
-            label.fontSize = 28;
+            ConfigureCornerLabel(label);
+            return label;
+        }
+
+        private TextMeshProUGUI CreateCenterSuitLabel()
+        {
+            var go = new GameObject("CenterSuit");
+            go.transform.SetParent(transform, false);
+            var rect = go.AddComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0.5f, 0.5f);
+            rect.anchorMax = new Vector2(0.5f, 0.5f);
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.sizeDelta = new Vector2(120f, 120f);
+            rect.anchoredPosition = Vector2.zero;
+
+            var label = go.AddComponent<TextMeshProUGUI>();
+            ConfigureCenterSuitLabel(label);
+            return label;
+        }
+
+        private static void ConfigureCornerLabel(TextMeshProUGUI label)
+        {
+            if (label == null)
+                return;
+
+            label.fontSize = CornerFontSize;
             label.alignment = TextAlignmentOptions.TopLeft;
             label.raycastTarget = false;
-            label.enableWordWrapping = false;
+            label.textWrappingMode = TextWrappingModes.NoWrap;
             label.overflowMode = TextOverflowModes.Overflow;
-            return label;
+            label.lineSpacing = -20f;
+            label.fontStyle = FontStyles.Bold;
+        }
+
+        private static void ConfigureCenterSuitLabel(TextMeshProUGUI label)
+        {
+            if (label == null)
+                return;
+
+            label.fontSize = CenterSuitFontSize;
+            label.alignment = TextAlignmentOptions.Center;
+            label.raycastTarget = false;
+            label.textWrappingMode = TextWrappingModes.NoWrap;
+            label.overflowMode = TextOverflowModes.Overflow;
+            label.fontStyle = FontStyles.Bold;
         }
 
         private static async Task EnsureSpritesAsync()
