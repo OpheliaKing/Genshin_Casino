@@ -24,12 +24,15 @@ namespace SHIN
             public const string BetPopup = "Assets/Addressables/Prefab/UI/BetPopup.prefab";
             public const string CharacterAtlas = "Assets/Addressables/Atlas/Atlas_Char.spriteatlasv2";
             public const string PlayerIcon = "sprite_character_player_icon_001";
+            public const string PlayerVs = "sprite_character_player_vs_001";
             public const string InGameAtlas = "Assets/Addressables/Atlas/Atlas_UI_InGame.spriteatlasv2";
             public const string OpponentDataSO = "Assets/Addressables/SO/OpponentDataSO.asset";
             public const string CardItem = "Assets/Addressables/Prefab/UI/CardObject.prefab";
             public const string InGameUI = "Assets/Addressables/Prefab/UI/InGameUI.prefab";
             public const string OpponentSelectUI = "Assets/Addressables/Prefab/UI/OpponentSelectUI/OpponentSelectUI.prefab";
             public const string OpponentSelectItem = "Assets/Addressables/Prefab/UI/OpponentSelectUI/OpponentSelectItem.prefab";
+            public const string VersusUI = "Assets/Addressables/Prefab/UI/VersusUI.prefab";
+            public const string FadeUI = "Assets/Addressables/Prefab/UI/FadeUI.prefab";
         }
     }
 }

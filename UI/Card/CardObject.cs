@@ -20,9 +20,13 @@ namespace SHIN
 
         private PokerCard _card;
         private bool _faceUp;
+        private bool _bound;
+        private int _applyVersion;
+
         private static Sprite _frontSprite;
         private static Sprite _backSprite;
-        private static bool _spritesLoaded;
+        private static bool _spritesReady;
+        private static Task _spriteLoadTask;
 
         private void Awake()
         {
@@ -30,41 +34,103 @@ namespace SHIN
                 _image = GetComponent<Image>();
 
             EnsureLabels();
+            SetContentVisible(false);
         }
 
         public void Bind(PokerCard card, bool faceUp)
         {
+            _ = BindAsync(card, faceUp);
+        }
+
+        public async Task BindAsync(PokerCard card, bool faceUp)
+        {
             _card = card;
             _faceUp = faceUp;
-            _ = ApplyAsync();
+            _bound = true;
+            var version = ++_applyVersion;
+            SetContentVisible(false);
+
+            await EnsureSpritesAsync();
+            if (this == null || version != _applyVersion)
+                return;
+
+            ApplyVisual();
         }
 
         public void SetFaceUp(bool faceUp)
         {
-            _faceUp = faceUp;
-            RefreshVisual();
-        }
-
-        private async Task ApplyAsync()
-        {
-            await EnsureSpritesAsync();
-            if (this == null)
+            if (!_bound)
                 return;
 
-            RefreshVisual();
+            _faceUp = faceUp;
+            _ = ApplyFaceStateAsync();
         }
 
-        private void RefreshVisual()
+        public async Task SetFaceUpAsync(bool faceUp)
         {
-            if (_image != null)
-                _image.sprite = _faceUp ? (_frontSprite != null ? _frontSprite : _image.sprite) : (_backSprite != null ? _backSprite : _image.sprite);
+            if (!_bound)
+                return;
+
+            _faceUp = faceUp;
+            await ApplyFaceStateAsync();
+        }
+
+        private async Task ApplyFaceStateAsync()
+        {
+            var version = ++_applyVersion;
+            SetContentVisible(false);
+
+            await EnsureSpritesAsync();
+            if (this == null || version != _applyVersion)
+                return;
+
+            // 뒷면이 아직 없으면 한 번 더 강제 로드
+            if (!_faceUp && _backSprite == null)
+            {
+                InvalidateSpriteCache();
+                await EnsureSpritesAsync();
+                if (this == null || version != _applyVersion)
+                    return;
+            }
+
+            ApplyVisual();
+        }
+
+        private void ApplyVisual()
+        {
+            if (_image == null)
+                return;
+
+            if (_faceUp)
+            {
+                if (_frontSprite == null)
+                {
+                    SetContentVisible(false);
+                    return;
+                }
+
+                _image.sprite = _frontSprite;
+            }
+            else
+            {
+                // 뒷면 없으면 절대 앞면으로 대체하지 않음 (빈 앞면처럼 보임)
+                if (_backSprite == null)
+                {
+                    SetContentVisible(false);
+                    Debug.LogWarning("[CardObject] 뒷면 스프라이트가 없어 상대 카드를 숨깁니다.");
+                    return;
+                }
+
+                _image.sprite = _backSprite;
+            }
 
             var color = _card.Suit is CardSuit.Hearts or CardSuit.Diamonds
                 ? new Color(0.82f, 0.12f, 0.14f)
                 : new Color(0.08f, 0.08f, 0.1f);
 
-            var cornerText = _faceUp ? _card.CornerText : string.Empty;
-            var suitText = _faceUp ? _card.SuitSymbol : string.Empty;
+            var showFace = _faceUp;
+            var cornerText = showFace ? _card.CornerText : string.Empty;
+            var suitText = showFace ? _card.SuitSymbol : string.Empty;
 
             if (_cornerLabels != null)
             {
@@ -74,20 +140,40 @@ namespace SHIN
                     if (label == null)
                         continue;
 
-                    label.enabled = _faceUp;
                     label.text = cornerText;
                     label.color = color;
                     label.fontSize = CornerFontSize;
+                    label.enabled = showFace;
                 }
             }
 
             if (_centerSuit != null)
             {
-                _centerSuit.enabled = _faceUp;
                 _centerSuit.text = suitText;
                 _centerSuit.color = color;
                 _centerSuit.fontSize = CenterSuitFontSize;
+                _centerSuit.enabled = showFace;
             }
+
+            SetContentVisible(true);
+        }
+
+        private void SetContentVisible(bool visible)
+        {
+            if (_image != null)
+                _image.enabled = visible;
+
+            if (_cornerLabels != null)
+            {
+                for (var i = 0; i < _cornerLabels.Count; i++)
+                {
+                    if (_cornerLabels[i] != null)
+                        _cornerLabels[i].enabled = visible && _faceUp;
+                }
+            }
+
+            if (_centerSuit != null)
+                _centerSuit.enabled = visible && _faceUp;
         }
 
         private void EnsureLabels()
@@ -186,25 +272,65 @@ namespace SHIN
             label.fontStyle = FontStyles.Bold;
         }
 
-        private static async Task EnsureSpritesAsync()
+        public static Task PreloadSpritesAsync()
         {
-            if (_spritesLoaded)
-                return;
-
-            var resourceManager = GameManager.Instance?.ResourceManager;
-            if (resourceManager == null)
-                return;
-
-            var atlas = await resourceManager.LoadAsync<SpriteAtlas>(PublicVariable.Address.InGameAtlas);
-            if (atlas == null)
-                return;
-
-            _frontSprite = FindSprite(atlas, FrontSpriteKey, "001");
-            _backSprite = FindSprite(atlas, BackSpriteKey, "002");
-            _spritesLoaded = _frontSprite != null || _backSprite != null;
+            return EnsureSpritesAsync();
         }
 
-        private static Sprite FindSprite(SpriteAtlas atlas, string exactName, string fallbackToken)
+        private static void InvalidateSpriteCache()
+        {
+            _spritesReady = false;
+            _spriteLoadTask = null;
+            _frontSprite = null;
+            _backSprite = null;
+        }
+
+        private static Task EnsureSpritesAsync()
+        {
+            if (_spritesReady && _frontSprite != null && _backSprite != null)
+                return Task.CompletedTask;
+
+            if (_spriteLoadTask != null)
+                return _spriteLoadTask;
+
+            _spriteLoadTask = LoadSpritesAsync();
+            return _spriteLoadTask;
+        }
+
+        private static async Task LoadSpritesAsync()
+        {
+            try
+            {
+                var resourceManager = GameManager.Instance?.ResourceManager;
+                if (resourceManager == null)
+                    return;
+
+                var atlas = await resourceManager.LoadAsync<SpriteAtlas>(PublicVariable.Address.InGameAtlas);
+                if (atlas == null)
+                {
+                    Debug.LogError("[CardObject] InGameAtlas 로드 실패");
+                    return;
+                }
+
+                _frontSprite = ResolveSprite(atlas, FrontSpriteKey);
+                _backSprite = ResolveSprite(atlas, BackSpriteKey);
+
+                if (_frontSprite == null)
+                    Debug.LogWarning($"[CardObject] 앞면 스프라이트 없음: {FrontSpriteKey}");
+                if (_backSprite == null)
+                    Debug.LogWarning($"[CardObject] 뒷면 스프라이트 없음: {BackSpriteKey}");
+
+                _spritesReady = _frontSprite != null && _backSprite != null;
+            }
+            finally
+            {
+                // 실패 시 다음 호출에서 재시도 가능하도록
+                if (!_spritesReady)
+                    _spriteLoadTask = null;
+            }
+        }
+
+        private static Sprite ResolveSprite(SpriteAtlas atlas, string exactName)
         {
             var exact = atlas.GetSprite(exactName);
             if (exact != null)
@@ -218,8 +344,20 @@ namespace SHIN
                 if (sprite == null)
                     continue;
 
-                var name = sprite.name.Replace("(Clone)", string.Empty);
-                if (name.Contains(fallbackToken))
+                var name = sprite.name.Replace("(Clone)", string.Empty).Trim();
+                if (name == exactName)
+                    return sprite;
+            }
+
+            // 파일명 끝부분 매칭 (구 이름/패킹 잔여 대비)
+            for (var i = 0; i < sprites.Length; i++)
+            {
+                var sprite = sprites[i];
+                if (sprite == null)
+                    continue;
+
+                var name = sprite.name.Replace("(Clone)", string.Empty).Trim();
+                if (name.EndsWith(exactName) || name.StartsWith(exactName))
                     return sprite;
             }
 

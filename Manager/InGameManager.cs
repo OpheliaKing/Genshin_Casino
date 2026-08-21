@@ -10,6 +10,12 @@ namespace SHIN
         private const int SmallBlind = 5;
         private const int BigBlind = 10;
 
+        private const float StartAnnounceHoldMin = 1f;
+        private const float StartAnnounceHoldMax = 3f;
+        private const float TurnAnnounceHold = 1f;
+        private const float OpponentThinkDelayMin = 3f;
+        private const float OpponentThinkDelayMax = 4.5f;
+
         private OpponentData _opponentData;
         private InGameUI _ui;
         private bool _isStarting;
@@ -44,6 +50,15 @@ namespace SHIN
 
         public void StartMatch(OpponentData opponentData)
         {
+            _ = StartMatchAsync(opponentData);
+        }
+
+        /// <summary>
+        /// 인게임 UI 표시 + 셋업까지. 페이드 아웃 중(검은 화면)에 호출한다.
+        /// 시작/턴 연출은 <see cref="BeginGameplayAsync"/>에서 페이드 인 이후 재생한다.
+        /// </summary>
+        public async Task EnterMatchAsync(OpponentData opponentData)
+        {
             if (opponentData == null || _isStarting)
                 return;
 
@@ -54,14 +69,58 @@ namespace SHIN
             _opponentData = opponentData;
             _isStarting = true;
 
+            var shown = new TaskCompletionSource<InGameUI>();
             uiManager.Show(PublicVariable.Address.InGameUI, ui =>
             {
                 _isStarting = false;
-                if (ui is not InGameUI inGameUI)
-                    return;
-
-                _ = BeginMatchAsync(inGameUI);
+                if (ui is InGameUI inGameUI)
+                    shown.TrySetResult(inGameUI);
+                else
+                    shown.TrySetResult(null);
             });
+
+            var inGameUI = await shown.Task;
+            if (inGameUI == null)
+                return;
+
+            _ui = inGameUI;
+            await inGameUI.SetupAsync(_opponentData);
+            if (this == null || inGameUI == null)
+                return;
+
+            inGameUI.BindMatch(this);
+            _playerStack = DefaultPlayerStack;
+            _opponentStack = Mathf.Max(BigBlind, _opponentData.haveGold);
+            _dealerIsPlayer = false;
+            _matchOver = false;
+        }
+
+        /// <summary>
+        /// 페이드 인 이후 호출. 게임 시작 연출 → 첫 핸드 → 턴 연출.
+        /// </summary>
+        public async Task BeginGameplayAsync()
+        {
+            if (_ui == null || _matchOver)
+                return;
+
+            // 표정(GAME_START)과 시작 대사를 같은 타이밍에
+            _ui.ShowOpponentReaction(CharacterExpressionType.GAME_START);
+
+            var startHold = Random.Range(StartAnnounceHoldMin, StartAnnounceHoldMax);
+            await _ui.PlayStartAnnounceAsync("게임 시작", startHold);
+            if (this == null || _matchOver)
+                return;
+
+            await StartHandAsync();
+        }
+
+        /// <summary>Enter + Begin을 한 번에 (페이드 없이 바로 테스트할 때).</summary>
+        public async Task StartMatchAsync(OpponentData opponentData)
+        {
+            await EnterMatchAsync(opponentData);
+            if (this == null || _ui == null)
+                return;
+            await BeginGameplayAsync();
         }
 
         public void OnPlayerAction(PokerAction action)
@@ -70,21 +129,6 @@ namespace SHIN
                 return;
 
             ApplyAction(true, action);
-        }
-
-        private async Task BeginMatchAsync(InGameUI ui)
-        {
-            _ui = ui;
-            await ui.SetupAsync(_opponentData);
-            if (this == null || ui == null)
-                return;
-
-            ui.BindMatch(this);
-            _playerStack = DefaultPlayerStack;
-            _opponentStack = Mathf.Max(BigBlind, _opponentData.haveGold);
-            _dealerIsPlayer = false;
-            _matchOver = false;
-            await StartHandAsync();
         }
 
         private async Task StartHandAsync()
@@ -115,7 +159,7 @@ namespace SHIN
             _opponentHole0 = _deck.Draw();
             _opponentHole1 = _deck.Draw();
 
-            await RefreshTableAsync(false);
+            await RefreshTableAsync(false, resetCards: true);
             _handBusy = false;
 
             await ContinueBettingAsync(_dealerIsPlayer);
@@ -292,6 +336,13 @@ namespace SHIN
             {
                 if (_playerStack > 0 && !_playerFolded)
                 {
+                    if (_ui != null)
+                        await _ui.PlayTurnAnnounceAsync("당신 차례", TurnAnnounceHold);
+                    if (this == null || _matchOver)
+                        return;
+
+                    _ui?.SetOpponentExpression(CharacterExpressionType.NORMAL);
+
                     _waitingPlayer = true;
                     RefreshHud("당신 차례");
                     return;
@@ -303,9 +354,19 @@ namespace SHIN
 
             if (_opponentStack > 0 && !_opponentFolded)
             {
+                if (_ui != null)
+                    await _ui.PlayTurnAnnounceAsync("상대 차례", TurnAnnounceHold);
+                if (this == null || _matchOver)
+                    return;
+
+                _ui?.ShowOpponentReaction(CharacterExpressionType.TURN_START);
+
                 _waitingPlayer = false;
                 RefreshHud("상대 생각 중...");
-                await Task.Delay(700);
+
+                // 턴 UI 직후 바로 행동하면 템포가 기계적이라, 사람처럼 랜덤 사고 시간
+                var thinkMs = Mathf.RoundToInt(Random.Range(OpponentThinkDelayMin, OpponentThinkDelayMax) * 1000f);
+                await Task.Delay(thinkMs);
                 if (this == null || _matchOver)
                     return;
                 ChooseOpponentAction();
@@ -412,11 +473,14 @@ namespace SHIN
             {
                 _playerStack += _pot;
                 RefreshHud($"승리! {playerScore.DisplayName}");
+                // 플레이어 승 → 캐릭터 패
+                _ui?.SetOpponentExpression(CharacterExpressionType.HAND_LOSE);
             }
             else if (compare < 0)
             {
                 _opponentStack += _pot;
                 RefreshHud($"패배... 상대 {opponentScore.DisplayName}");
+                _ui?.SetOpponentExpression(CharacterExpressionType.HAND_WIN);
             }
             else
             {
@@ -437,11 +501,13 @@ namespace SHIN
             {
                 _playerStack += _pot;
                 RefreshHud("상대 폴드. 팟 획득");
+                _ui?.SetOpponentExpression(CharacterExpressionType.HAND_LOSE);
             }
             else
             {
                 _opponentStack += _pot;
                 RefreshHud("폴드. 상대가 팟 획득");
+                _ui?.SetOpponentExpression(CharacterExpressionType.HAND_WIN);
             }
 
             _pot = 0;
@@ -473,9 +539,13 @@ namespace SHIN
             _waitingPlayer = false;
             var win = _playerStack > 0;
             RefreshHud(win ? "매치 승리" : "매치 패배");
+
+            // 캐릭터 기준: 플레이어 승리 → LOSE, 플레이어 패배 → WIN
+            if (_ui != null)
+                _ui.ShowOpponentReaction(win ? CharacterExpressionType.LOSE : CharacterExpressionType.WIN);
         }
 
-        private async Task RefreshTableAsync(bool revealOpponent)
+        private async Task RefreshTableAsync(bool revealOpponent, bool resetCards = false)
         {
             if (_ui == null)
                 return;
@@ -484,7 +554,8 @@ namespace SHIN
                 new[] { _playerHole0, _playerHole1 },
                 new[] { _opponentHole0, _opponentHole1 },
                 _board,
-                revealOpponent);
+                revealOpponent,
+                resetCards);
             RefreshHud(StreetLabel());
         }
 

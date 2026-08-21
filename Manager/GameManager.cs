@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
 using UnityEngine;
 
 namespace SHIN
@@ -66,7 +69,98 @@ namespace SHIN
                 return;
             }
 
-            InGameManager.StartMatch(opponentData);
+            _ = GameStartAsync(opponentData);
+        }
+
+        private async Task GameStartAsync(OpponentData opponentData)
+        {
+            // Versus 연출과 인게임/캐릭터 프리로드를 병렬로 진행
+            var preloadTask = PreloadMatchResourcesAsync(opponentData);
+
+            var versusReady = new TaskCompletionSource<VersusUI>();
+            UIManager.Show(PublicVariable.Address.VersusUI, ui =>
+            {
+                if (ui is VersusUI versusUI)
+                    versusReady.TrySetResult(versusUI);
+                else
+                    versusReady.TrySetResult(null);
+            });
+
+            var versusUI = await versusReady.Task;
+            if (this == null)
+                return;
+
+            if (versusUI == null)
+            {
+                Debug.LogError("[GameManager] VersusUI를 찾지 못했습니다.");
+                await preloadTask;
+                if (this == null)
+                    return;
+
+                await UIManager.FadeTransitionAsync(async () =>
+                {
+                    await InGameManager.EnterMatchAsync(opponentData);
+                });
+                if (this == null)
+                    return;
+                await InGameManager.BeginGameplayAsync();
+                return;
+            }
+
+            var introDone = new TaskCompletionSource<bool>();
+            versusUI.Begin(opponentData, () => introDone.TrySetResult(true));
+
+            await introDone.Task;
+            if (this == null)
+                return;
+
+            // 연출이 먼저 끝나도 프리로드 완료까지 Versus 유지
+            await preloadTask;
+            if (this == null)
+                return;
+
+            var versusToClose = versusUI;
+            await UIManager.FadeTransitionAsync(async () =>
+            {
+                UIManager.Close(versusToClose, restoreVisibleStack: false);
+                await InGameManager.EnterMatchAsync(opponentData);
+            });
+            if (this == null)
+                return;
+            await InGameManager.BeginGameplayAsync();
+        }
+
+        private async Task PreloadMatchResourcesAsync(OpponentData opponentData)
+        {
+            var uiPreload = UIManager.PreloadInGameUIAsync();
+            var opponentPreload = PreloadOpponentAsync(opponentData);
+            await Task.WhenAll(uiPreload, opponentPreload);
+        }
+
+        private async Task PreloadOpponentAsync(OpponentData opponentData)
+        {
+            if (opponentData == null)
+                return;
+
+            var resourceManager = ResourceManager;
+            if (resourceManager == null)
+                return;
+
+            var tasks = new List<Task>();
+
+            if (!string.IsNullOrEmpty(opponentData.modelPath))
+                tasks.Add(resourceManager.LoadAsync<GameObject>(opponentData.modelPath));
+
+            var atlasAddress = !string.IsNullOrEmpty(opponentData.atlasAddress)
+                ? opponentData.atlasAddress
+                : PublicVariable.Address.CharacterAtlas;
+            if (!string.IsNullOrEmpty(atlasAddress))
+                tasks.Add(resourceManager.LoadAsync<UnityEngine.U2D.SpriteAtlas>(atlasAddress));
+
+            if (tasks.Count == 0)
+                return;
+
+            await Task.WhenAll(tasks);
         }
     }
 }

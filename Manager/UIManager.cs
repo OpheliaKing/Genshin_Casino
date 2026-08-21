@@ -6,7 +6,7 @@ using UnityEngine;
 namespace SHIN
 {
     /// <summary>
-    /// UIBase 스택 + Addressables UI 로드/해제.
+    /// UIBase 스택 + Addressables UI 로드/해제 + 범용 Fade.
     /// </summary>
     public class UIManager : ManagerBase
     {
@@ -14,6 +14,8 @@ namespace SHIN
 
         private readonly Stack<UIStackEntry> _uiStack = new();
         private readonly Dictionary<string, GameObject> _cachedInstances = new();
+        private FadeUI _fadeUI;
+        private Task<FadeUI> _fadeEnsureTask;
 
         public UIBase Current => _uiStack.Count > 0 ? _uiStack.Peek().UI : null;
         public int Count => _uiStack.Count;
@@ -26,6 +28,62 @@ namespace SHIN
 
             await resourceManager.PreloadLabelAsync(PublicVariable.Label.Preload);
             await resourceManager.PreloadLabelAsync(PublicVariable.Label.InGame);
+            await CardObject.PreloadSpritesAsync();
+            await EnsureFadeUIAsync();
+        }
+
+        public Task FadeOutAsync(float duration = -1f)
+        {
+            return FadeToAsync(1f, duration);
+        }
+
+        public Task FadeInAsync(float duration = -1f)
+        {
+            return FadeToAsync(0f, duration);
+        }
+
+        public async Task FadeToAsync(float targetAlpha, float duration = -1f)
+        {
+            var fade = await EnsureFadeUIAsync();
+            if (fade == null)
+                return;
+
+            await fade.FadeToAsync(targetAlpha, duration);
+        }
+
+        /// <summary>
+        /// 페이드 아웃 → midAction → 페이드 인. 화면 전환용 범용 API.
+        /// </summary>
+        public async Task FadeTransitionAsync(Func<Task> midAction, float outDuration = -1f, float inDuration = -1f)
+        {
+            var fade = await EnsureFadeUIAsync();
+            await FadeOutAsync(outDuration);
+
+            if (fade != null)
+            {
+                fade.BringToFront();
+                fade.SetAlphaImmediate(1f);
+            }
+
+            if (midAction != null)
+                await midAction();
+
+            if (fade != null)
+                fade.BringToFront();
+
+            await FadeInAsync(inDuration);
+
+            if (fade != null)
+                fade.SetAlphaImmediate(0f);
+        }
+
+        public async Task FadeTransitionAsync(Action midAction, float outDuration = -1f, float inDuration = -1f)
+        {
+            await FadeTransitionAsync(() =>
+            {
+                midAction?.Invoke();
+                return Task.CompletedTask;
+            }, outDuration, inDuration);
         }
 
         public void Show(string address)
@@ -97,23 +155,35 @@ namespace SHIN
 
         public void Close()
         {
+            Close(restoreVisibleStack: true);
+        }
+
+        public void Close(bool restoreVisibleStack)
+        {
             if (_uiStack.Count == 0)
                 return;
 
             var entry = _uiStack.Pop();
             HideEntry(entry);
             ReleaseEntry(entry);
-            RestoreVisibleStack();
+
+            if (restoreVisibleStack)
+                RestoreVisibleStack();
         }
 
         public void Close(UIBase ui)
+        {
+            Close(ui, restoreVisibleStack: true);
+        }
+
+        public void Close(UIBase ui, bool restoreVisibleStack)
         {
             if (ui == null)
                 return;
 
             if (_uiStack.Count > 0 && _uiStack.Peek().UI == ui)
             {
-                Close();
+                Close(restoreVisibleStack);
                 return;
             }
 
@@ -134,7 +204,8 @@ namespace SHIN
             while (temp.Count > 0)
                 _uiStack.Push(temp.Pop());
 
-            RestoreVisibleStack();
+            if (restoreVisibleStack)
+                RestoreVisibleStack();
         }
 
         public void CloseAll()
@@ -149,13 +220,67 @@ namespace SHIN
             _cachedInstances.Clear();
         }
 
+        private async Task<FadeUI> EnsureFadeUIAsync()
+        {
+            if (_fadeUI != null)
+            {
+                _fadeUI.BringToFront();
+                return _fadeUI;
+            }
+
+            if (_fadeEnsureTask != null)
+                return await _fadeEnsureTask;
+
+            _fadeEnsureTask = CreateFadeUIAsync();
+            try
+            {
+                return await _fadeEnsureTask;
+            }
+            finally
+            {
+                _fadeEnsureTask = null;
+            }
+        }
+
+        private async Task<FadeUI> CreateFadeUIAsync()
+        {
+            var parent = ResolveUIRoot();
+            var resourceManager = ResolveResourceManager();
+            if (parent == null || resourceManager == null)
+                return null;
+
+            var go = await resourceManager.InstantiateAsync(
+                PublicVariable.Address.FadeUI,
+                parent,
+                startInactive: false);
+
+            if (go == null)
+            {
+                Debug.LogError("[UIManager] FadeUI 생성 실패");
+                return null;
+            }
+
+            _fadeUI = go.GetComponent<FadeUI>() ?? go.AddComponent<FadeUI>();
+            _fadeUI.SetAlphaImmediate(0f);
+            _fadeUI.BringToFront();
+            return _fadeUI;
+        }
+
         private void OpenLoaded(string address, UIBase ui, GameObject go)
         {
             if (ui.UIType == UIType.FullScreen)
                 DeactivateAll();
 
+            // FadeUI 하위에 잘못 붙었으면 루트로 교정
+            var root = ResolveUIRoot();
+            if (root != null && go.transform.parent != root)
+                go.transform.SetParent(root, false);
+
+            _fadeUI?.BringToFront();
+
             PushEntry(new UIStackEntry(address, ui, go, true));
             ShowEntry(_uiStack.Peek());
+            _fadeUI?.BringToFront();
         }
 
         private void PushEntry(UIStackEntry entry)
@@ -195,6 +320,8 @@ namespace SHIN
                 else
                     HideEntry(stackArray[i]);
             }
+
+            _fadeUI?.BringToFront();
         }
 
         private static void ShowEntry(UIStackEntry entry)
@@ -252,14 +379,37 @@ namespace SHIN
             if (_uiRoot != null)
                 return _uiRoot;
 
-            var canvas = FindFirstObjectByType<Canvas>();
-            if (canvas == null)
+            // FadeUI 등 nested Canvas가 있어도 항상 루트 Canvas만 쓴다.
+            var canvases = FindObjectsByType<Canvas>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            Canvas rootCanvas = null;
+            for (var i = 0; i < canvases.Length; i++)
+            {
+                var canvas = canvases[i];
+                if (canvas == null)
+                    continue;
+
+                // FadeUI 오버레이 Canvas는 UI 루트로 쓰지 않음
+                if (canvas.GetComponent<FadeUI>() != null)
+                    continue;
+
+                if (canvas.isRootCanvas)
+                {
+                    rootCanvas = canvas;
+                    break;
+                }
+
+                if (rootCanvas == null)
+                    rootCanvas = canvas.rootCanvas != null ? canvas.rootCanvas : canvas;
+            }
+
+            if (rootCanvas == null)
             {
                 Debug.LogError("[UIManager] Canvas를 찾을 수 없습니다.");
                 return null;
             }
 
-            return canvas.transform;
+            _uiRoot = rootCanvas.transform;
+            return _uiRoot;
         }
 
         private static bool TryGetUIBase(GameObject go, out UIBase ui)
@@ -271,6 +421,7 @@ namespace SHIN
         private void OnDestroy()
         {
             CloseAll();
+            _fadeUI = null;
         }
 
         private sealed class UIStackEntry

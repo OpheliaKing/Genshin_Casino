@@ -19,13 +19,18 @@ namespace SHIN
         [SerializeField] private InGameButton _foldButton;
         [SerializeField] private InGameButton _callButton;
         [SerializeField] private InGameButton _raiseButton;
+        [SerializeField] private InGameAnnouncePanel _startPanel;
+        [SerializeField] private InGameAnnouncePanel _turnPanel;
+        [SerializeField] private DialogUI _dialogUI;
 
         private GameObject _opponentModel;
+        private CharacterFaceController _opponentFace;
         private readonly List<GameObject> _spawnedCards = new();
         private readonly List<CardObject> _playerCards = new();
         private readonly List<CardObject> _opponentCards = new();
         private readonly List<CardObject> _communityCards = new();
         private InGameManager _match;
+        private OpponentData _opponentData;
         private int _displayedPot;
         private bool _hasDisplayedPot;
         private Tween _potTween;
@@ -34,7 +39,9 @@ namespace SHIN
 
         public async Task SetupAsync(OpponentData opponentData)
         {
+            _opponentData = opponentData;
             ClearOpponentModel();
+            HideDialog();
             HideExistingCardsInSlots(_playerCardSlots);
             HideExistingCardsInSlots(_opponentCardSlots);
 
@@ -65,12 +72,33 @@ namespace SHIN
 
             _opponentModel = instance;
             ResetLocalTransform(instance.transform);
+            BindOpponentFace(instance, opponentData);
 
             if (_playerStackUI != null)
                 await _playerStackUI.SetIconAsync(PublicVariable.Address.PlayerIcon, PublicVariable.Address.CharacterAtlas);
 
             if (_opponentStackUI != null && !string.IsNullOrEmpty(opponentData.iconPath))
                 await _opponentStackUI.SetIconAsync(opponentData.iconPath, opponentData.atlasAddress);
+        }
+
+        private void BindOpponentFace(GameObject model, OpponentData opponentData)
+        {
+            _opponentFace = model != null
+                ? model.GetComponentInChildren<CharacterFaceController>(true)
+                : null;
+
+            if (_opponentFace == null)
+                return;
+
+            // 구 UIBlinkLoopPlayer와 충돌 방지
+            var blinkers = model.GetComponentsInChildren<UIBlinkLoopPlayer>(true);
+            for (var i = 0; i < blinkers.Length; i++)
+            {
+                if (blinkers[i] != null)
+                    blinkers[i].enabled = false;
+            }
+
+            _opponentFace.Bind(opponentData);
         }
 
         public void BindMatch(InGameManager match)
@@ -109,21 +137,132 @@ namespace SHIN
             IReadOnlyList<PokerCard> playerHole,
             IReadOnlyList<PokerCard> opponentHole,
             IReadOnlyList<PokerCard> board,
-            bool revealOpponent)
+            bool revealOpponent,
+            bool resetCards = false)
         {
-            await ClearCardsAsync();
+            if (resetCards)
+            {
+                await ClearCardsAsync();
+                if (this == null)
+                    return;
+            }
+
+            await EnsureHoleCardsAsync(playerHole, _playerCardSlots, _playerCards, true);
             if (this == null)
                 return;
 
-            await SpawnCardsAsync(playerHole, _playerCardSlots, _playerCards, true);
-            await SpawnCardsAsync(opponentHole, _opponentCardSlots, _opponentCards, revealOpponent);
-            await SpawnCardsAsync(board, _communityCardSlots, _communityCards, true);
+            await EnsureHoleCardsAsync(opponentHole, _opponentCardSlots, _opponentCards, revealOpponent);
+            if (this == null)
+                return;
+
+            // 이미 있는 상대 패는 뒤집기만 (스프라이트 준비까지 await)
+            for (var i = 0; i < _opponentCards.Count; i++)
+            {
+                if (_opponentCards[i] != null)
+                    await _opponentCards[i].SetFaceUpAsync(revealOpponent);
+            }
+
+            if (this == null)
+                return;
+
+            await EnsureBoardCardsAsync(board);
         }
 
         public void RevealOpponentCards()
         {
             for (var i = 0; i < _opponentCards.Count; i++)
                 _opponentCards[i]?.SetFaceUp(true);
+        }
+
+        public Task PlayStartAnnounceAsync(string text = "게임 시작", float holdSeconds = 2f)
+        {
+            EnsureAnnouncePanels();
+            if (_startPanel == null)
+            {
+                Debug.LogWarning("[InGameUI] StartPanel가 연결되지 않았습니다.");
+                return Task.CompletedTask;
+            }
+
+            return _startPanel.PlayAsync(text, holdSeconds);
+        }
+
+        public Task PlayTurnAnnounceAsync(string text, float holdSeconds = 1f)
+        {
+            EnsureAnnouncePanels();
+            if (_turnPanel == null)
+            {
+                Debug.LogWarning("[InGameUI] TurnPanel이 연결되지 않았습니다.");
+                return Task.CompletedTask;
+            }
+
+            return _turnPanel.PlayAsync(text, holdSeconds);
+        }
+
+        public void ShowOpponentReaction(CharacterExpressionType type, bool showDialog = true)
+        {
+            _opponentFace?.SetExpression(type);
+
+            if (!showDialog || _opponentData == null)
+                return;
+
+            ShowDialog(_opponentData.PickDialog(type));
+        }
+
+        public void SetOpponentExpression(CharacterExpressionType type)
+        {
+            _opponentFace?.SetExpression(type);
+        }
+
+        public void ShowDialog(string message)
+        {
+            EnsureDialogUI();
+            if (_dialogUI == null)
+            {
+                Debug.LogWarning("[InGameUI] DialogUI가 연결되지 않았습니다.");
+                return;
+            }
+
+            _dialogUI.Show(message);
+        }
+
+        public void HideDialog()
+        {
+            EnsureDialogUI();
+            _dialogUI?.Hide();
+        }
+
+        private void EnsureAnnouncePanels()
+        {
+            if (_startPanel == null)
+            {
+                var start = transform.Find("InGameStartPanel");
+                if (start != null)
+                    _startPanel = start.GetComponent<InGameAnnouncePanel>();
+            }
+
+            if (_turnPanel == null)
+            {
+                var turn = transform.Find("TurnPanel");
+                if (turn != null)
+                    _turnPanel = turn.GetComponent<InGameAnnouncePanel>();
+            }
+        }
+
+        private void EnsureDialogUI()
+        {
+            if (_dialogUI != null)
+                return;
+
+            var found = GetComponentInChildren<DialogUI>(true);
+            if (found != null)
+            {
+                _dialogUI = found;
+                return;
+            }
+
+            var t = transform.Find("DialogUI");
+            if (t != null)
+                _dialogUI = t.GetComponent<DialogUI>() ?? t.gameObject.AddComponent<DialogUI>();
         }
 
         public void RefreshHud(string status, int pot, int playerStack, int opponentStack, bool playerTurn, int toCall, bool matchOver)
@@ -153,6 +292,67 @@ namespace SHIN
             {
                 _raiseButton.Interactable = interactable;
                 _raiseButton.SetLabel(toCall > 0 ? "레이즈" : "벳");
+            }
+        }
+
+        private async Task EnsureHoleCardsAsync(
+            IReadOnlyList<PokerCard> cards,
+            Transform[] slots,
+            List<CardObject> bucket,
+            bool faceUp)
+        {
+            if (bucket.Count > 0)
+                return;
+
+            await SpawnCardsAsync(cards, slots, bucket, faceUp);
+        }
+
+        private async Task EnsureBoardCardsAsync(IReadOnlyList<PokerCard> board)
+        {
+            if (board == null || _communityCardSlots == null)
+                return;
+
+            var resourceManager = GameManager.Instance?.ResourceManager;
+            if (resourceManager == null)
+                return;
+
+            var targetCount = Mathf.Min(board.Count, _communityCardSlots.Length);
+            for (var i = _communityCards.Count; i < targetCount; i++)
+            {
+                var slot = _communityCardSlots[i];
+                if (slot == null)
+                {
+                    Debug.LogError($"[InGameUI] 커뮤니티 카드 슬롯 {i}이 비어 있습니다.");
+                    continue;
+                }
+
+                var instance = await resourceManager.InstantiateAsync(
+                    PublicVariable.Address.CardItem,
+                    slot,
+                    startInactive: false);
+
+                if (this == null)
+                {
+                    if (instance != null)
+                        resourceManager.ReleaseInstance(instance);
+                    return;
+                }
+
+                if (instance == null)
+                    continue;
+
+                FitToSlot(instance.transform);
+                _spawnedCards.Add(instance);
+
+                var cardObject = instance.GetComponent<CardObject>();
+                if (cardObject == null)
+                    cardObject = instance.AddComponent<CardObject>();
+
+                await cardObject.BindAsync(board[i], true);
+                if (this == null)
+                    return;
+
+                _communityCards.Add(cardObject);
             }
         }
 
@@ -202,7 +402,10 @@ namespace SHIN
                 if (cardObject == null)
                     cardObject = instance.AddComponent<CardObject>();
 
-                cardObject.Bind(cards[i], faceUp);
+                await cardObject.BindAsync(cards[i], faceUp);
+                if (this == null)
+                    return;
+
                 bucket.Add(cardObject);
             }
         }
@@ -268,6 +471,7 @@ namespace SHIN
 
         private void ClearOpponentModel()
         {
+            _opponentFace = null;
             if (_opponentModel == null)
                 return;
 
