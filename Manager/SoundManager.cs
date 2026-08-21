@@ -21,6 +21,7 @@ namespace SHIN
         [SerializeField] private int _maxSePlayCount = 30;
 
         private readonly Dictionary<string, AudioClip> _clipCache = new();
+        private readonly Dictionary<string, Task<AudioClip>> _loadingTasks = new();
         private readonly List<AudioSource> _seSources = new();
 
         private AudioSource _bgmSource;
@@ -34,13 +35,57 @@ namespace SHIN
 
         public void Play(string address, SoundType type)
         {
-            if (string.IsNullOrEmpty(address))
+            if (string.IsNullOrWhiteSpace(address))
+                return;
+
+            address = address.Trim();
+            EnsureAudioSetup();
+
+            // 캐시 히트는 await 없이 즉시 재생 (버튼 입력 지연 방지)
+            if (_clipCache.TryGetValue(address, out var cached) && cached != null)
             {
-                Debug.LogError("[SoundManager] address가 비어 있습니다.");
+                PlayClip(cached, type);
                 return;
             }
 
             _ = PlayInternalAsync(address, type);
+        }
+
+        /// <summary>보이스/효과음 등 SE 재생. address는 Addressables 주소.</summary>
+        public void PlaySe(string address)
+        {
+            Play(address, SoundType.SE);
+        }
+
+        public void PlayBgm(string address)
+        {
+            Play(address, SoundType.BGM);
+        }
+
+        /// <summary>Addressables에서 미리 로드해 SoundManager 캐시에 넣는다.</summary>
+        public async Task PreloadAsync(IEnumerable<string> addresses)
+        {
+            if (addresses == null)
+                return;
+
+            EnsureAudioSetup();
+            var tasks = new List<Task>();
+            foreach (var raw in addresses)
+            {
+                if (string.IsNullOrWhiteSpace(raw))
+                    continue;
+
+                var address = raw.Trim();
+                if (_clipCache.ContainsKey(address))
+                    continue;
+
+                tasks.Add(GetOrLoadClipAsync(address));
+            }
+
+            if (tasks.Count == 0)
+                return;
+
+            await Task.WhenAll(tasks);
         }
 
         public void StopBgm()
@@ -73,6 +118,11 @@ namespace SHIN
             if (this == null || clip == null)
                 return;
 
+            PlayClip(clip, type);
+        }
+
+        private void PlayClip(AudioClip clip, SoundType type)
+        {
             if (type == SoundType.BGM)
             {
                 PlayBgm(clip);
@@ -87,6 +137,23 @@ namespace SHIN
             if (_clipCache.TryGetValue(address, out var cached) && cached != null)
                 return cached;
 
+            if (_loadingTasks.TryGetValue(address, out var inflight))
+                return await inflight;
+
+            var loadTask = LoadClipAsync(address);
+            _loadingTasks[address] = loadTask;
+            try
+            {
+                return await loadTask;
+            }
+            finally
+            {
+                _loadingTasks.Remove(address);
+            }
+        }
+
+        private async Task<AudioClip> LoadClipAsync(string address)
+        {
             var resourceManager = GameManager.Instance?.ResourceManager;
             if (resourceManager == null)
             {
@@ -118,9 +185,8 @@ namespace SHIN
             if (source == null)
                 return;
 
-            source.clip = clip;
-            source.loop = false;
-            source.Play();
+            // PlayOneShot: 같은 소스 재사용 시 끊김/할당 오버헤드를 줄임
+            source.PlayOneShot(clip);
         }
 
         private AudioSource GetAvailableSeSource()

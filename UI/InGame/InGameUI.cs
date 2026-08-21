@@ -22,6 +22,10 @@ namespace SHIN
         [SerializeField] private InGameAnnouncePanel _startPanel;
         [SerializeField] private InGameAnnouncePanel _turnPanel;
         [SerializeField] private DialogUI _dialogUI;
+        [SerializeField] private GameResultUI _gameResultUI;
+        [SerializeField] private ShowDownUI _showDownUI;
+        [SerializeField] private StreetProgressUI _streetProgressUI;
+        [SerializeField] private InGameBetFx _betFx;
 
         private GameObject _opponentModel;
         private CharacterFaceController _opponentFace;
@@ -42,6 +46,10 @@ namespace SHIN
             _opponentData = opponentData;
             ClearOpponentModel();
             HideDialog();
+            _gameResultUI?.HideImmediate();
+            _showDownUI?.HideImmediate();
+            EnsureStreetProgressUI();
+            _streetProgressUI?.ResetToPreflop();
             HideExistingCardsInSlots(_playerCardSlots);
             HideExistingCardsInSlots(_opponentCardSlots);
 
@@ -74,8 +82,19 @@ namespace SHIN
             ResetLocalTransform(instance.transform);
             BindOpponentFace(instance, opponentData);
 
-            if (_playerStackUI != null)
-                await _playerStackUI.SetIconAsync(PublicVariable.Address.PlayerIcon, PublicVariable.Address.CharacterAtlas);
+            var playerData = GameManager.Instance != null
+                ? await GameManager.Instance.EnsurePlayerDataAsync()
+                : null;
+            if (this == null)
+                return;
+
+            if (_playerStackUI != null && playerData != null && !string.IsNullOrEmpty(playerData.iconPath))
+            {
+                var atlas = !string.IsNullOrEmpty(playerData.atlasAddress)
+                    ? playerData.atlasAddress
+                    : PublicVariable.Address.CharacterAtlas;
+                await _playerStackUI.SetIconAsync(playerData.iconPath, atlas);
+            }
 
             if (_opponentStackUI != null && !string.IsNullOrEmpty(opponentData.iconPath))
                 await _opponentStackUI.SetIconAsync(opponentData.iconPath, opponentData.atlasAddress);
@@ -128,7 +147,9 @@ namespace SHIN
                 {
                     if (_match == null)
                         return;
-                    _match.OnPlayerAction(_match.PlayerToCall > 0 ? PokerAction.Raise : PokerAction.Bet);
+                    // 이미 판돈(블라인드 포함)이 있으면 벳이 아니라 레이즈
+                    var isRaise = _match.PlayerToCall > 0 || _match.CurrentBet > 0;
+                    _match.OnPlayerAction(isRaise ? PokerAction.Raise : PokerAction.Bet);
                 });
             }
         }
@@ -198,14 +219,64 @@ namespace SHIN
             return _turnPanel.PlayAsync(text, holdSeconds);
         }
 
+        public void PlayBetFx(bool isPlayer, PokerAction action, int chipsPaid)
+        {
+            EnsureBetFx();
+            if (_betFx == null)
+                return;
+
+            var from = isPlayer
+                ? _playerStackUI != null ? _playerStackUI.transform as RectTransform : null
+                : _opponentStackUI != null ? _opponentStackUI.transform as RectTransform : null;
+            _betFx.Play(isPlayer, action, chipsPaid, from);
+        }
+
+        public void SetStreetProgress(PokerStreet street, bool animate = true)
+        {
+            EnsureStreetProgressUI();
+            _streetProgressUI?.SetStreet(street, animate);
+        }
+
+        public Task PlayGameResultAsync(bool playerWins, float holdSeconds = 1.35f)
+        {
+            EnsureGameResultUI();
+            if (_gameResultUI == null)
+            {
+                Debug.LogWarning("[InGameUI] GameResultUI가 연결되지 않았습니다.");
+                return Task.CompletedTask;
+            }
+
+            return _gameResultUI.PlayAsync(playerWins, holdSeconds);
+        }
+
+        public Task PlayShowDownAsync(float holdSeconds = 1.8f)
+        {
+            EnsureShowDownUI();
+            if (_showDownUI == null)
+            {
+                Debug.LogWarning("[InGameUI] ShowDownUI가 연결되지 않았습니다.");
+                return Task.CompletedTask;
+            }
+
+            return _showDownUI.PlayAsync(holdSeconds);
+        }
+
         public void ShowOpponentReaction(CharacterExpressionType type, bool showDialog = true)
         {
-            _opponentFace?.SetExpression(type);
+            var faceType = type;
+            if (_opponentData != null &&
+                !_opponentData.TryGetEyeExpression(type, out _) &&
+                !_opponentData.TryGetMouthExpression(type, out _))
+            {
+                faceType = CharacterExpressionType.NORMAL;
+            }
+
+            _opponentFace?.SetExpression(faceType);
 
             if (!showDialog || _opponentData == null)
                 return;
 
-            ShowDialog(_opponentData.PickDialog(type));
+            ShowDialog(_opponentData.PickDialog(type), _opponentData.PickVoice(type));
         }
 
         public void SetOpponentExpression(CharacterExpressionType type)
@@ -213,7 +284,27 @@ namespace SHIN
             _opponentFace?.SetExpression(type);
         }
 
-        public void ShowDialog(string message)
+        public void PlayPlayerVoice(CharacterExpressionType type)
+        {
+            var playerData = GameManager.Instance?.PlayerData;
+            if (playerData == null)
+                return;
+
+            var address = playerData.PickVoice(type);
+            if (string.IsNullOrWhiteSpace(address))
+                return;
+
+            var soundManager = GameManager.Instance?.SoundManager;
+            if (soundManager == null)
+            {
+                Debug.LogWarning("[InGameUI] SoundManager가 없습니다.");
+                return;
+            }
+
+            soundManager.PlaySe(address);
+        }
+
+        public void ShowDialog(string message, string voiceAddress = null)
         {
             EnsureDialogUI();
             if (_dialogUI == null)
@@ -222,7 +313,7 @@ namespace SHIN
                 return;
             }
 
-            _dialogUI.Show(message);
+            _dialogUI.Show(message, voiceAddress);
         }
 
         public void HideDialog()
@@ -265,7 +356,65 @@ namespace SHIN
                 _dialogUI = t.GetComponent<DialogUI>() ?? t.gameObject.AddComponent<DialogUI>();
         }
 
-        public void RefreshHud(string status, int pot, int playerStack, int opponentStack, bool playerTurn, int toCall, bool matchOver)
+        private void EnsureGameResultUI()
+        {
+            if (_gameResultUI != null)
+                return;
+
+            var found = GetComponentInChildren<GameResultUI>(true);
+            if (found != null)
+            {
+                _gameResultUI = found;
+                return;
+            }
+
+            var t = transform.Find("GameResultUI");
+            if (t != null)
+                _gameResultUI = t.GetComponent<GameResultUI>() ?? t.gameObject.AddComponent<GameResultUI>();
+        }
+
+        private void EnsureShowDownUI()
+        {
+            if (_showDownUI != null)
+                return;
+
+            var found = GetComponentInChildren<ShowDownUI>(true);
+            if (found != null)
+            {
+                _showDownUI = found;
+                return;
+            }
+
+            var t = transform.Find("ShowDownUI");
+            if (t != null)
+                _showDownUI = t.GetComponent<ShowDownUI>() ?? t.gameObject.AddComponent<ShowDownUI>();
+        }
+
+        private void EnsureStreetProgressUI()
+        {
+            if (_streetProgressUI != null)
+                return;
+
+            _streetProgressUI = GetComponentInChildren<StreetProgressUI>(true);
+            if (_streetProgressUI != null)
+                return;
+
+            Debug.LogWarning("[InGameUI] StreetProgressUI가 프리팹에 연결되어 있지 않습니다.");
+        }
+
+        private void EnsureBetFx()
+        {
+            if (_betFx != null)
+                return;
+
+            _betFx = GetComponentInChildren<InGameBetFx>(true);
+            if (_betFx != null)
+                return;
+
+            _betFx = gameObject.AddComponent<InGameBetFx>();
+        }
+
+        public void RefreshHud(string status, int pot, int playerStack, int opponentStack, bool playerTurn, int toCall, bool matchOver, int currentBet = 0)
         {
             if (_statusText != null)
                 _statusText.text = status;
@@ -291,7 +440,9 @@ namespace SHIN
             if (_raiseButton != null)
             {
                 _raiseButton.Interactable = interactable;
-                _raiseButton.SetLabel(toCall > 0 ? "레이즈" : "벳");
+                // toCall이 0이어도 블라인드 등으로 currentBet이 있으면 레이즈
+                var isRaise = toCall > 0 || currentBet > 0;
+                _raiseButton.SetLabel(isRaise ? "레이즈" : "벳");
             }
         }
 
@@ -301,6 +452,13 @@ namespace SHIN
             List<CardObject> bucket,
             bool faceUp)
         {
+            // 파괴된 참조가 남아 스폰을 건너뛰지 않도록 정리
+            for (var i = bucket.Count - 1; i >= 0; i--)
+            {
+                if (bucket[i] == null)
+                    bucket.RemoveAt(i);
+            }
+
             if (bucket.Count > 0)
                 return;
 
@@ -396,6 +554,9 @@ namespace SHIN
                     continue;
 
                 FitToSlot(instance.transform);
+                instance.transform.SetAsLastSibling();
+                if (slot != null)
+                    slot.SetAsLastSibling();
                 _spawnedCards.Add(instance);
 
                 var cardObject = instance.GetComponent<CardObject>();
@@ -403,6 +564,12 @@ namespace SHIN
                     cardObject = instance.AddComponent<CardObject>();
 
                 await cardObject.BindAsync(cards[i], faceUp);
+                if (this == null)
+                    return;
+
+                // 앞면 카드가 아틀라스 실패로 숨겨지지 않도록 한 번 더 보장
+                if (faceUp)
+                    await cardObject.SetFaceUpAsync(true);
                 if (this == null)
                     return;
 

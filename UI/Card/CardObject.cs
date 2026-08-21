@@ -17,6 +17,8 @@ namespace SHIN
         [SerializeField] private Image _image;
         [SerializeField] private List<TextMeshProUGUI> _cornerLabels = new();
         [SerializeField] private TextMeshProUGUI _centerSuit;
+        [SerializeField] private Sprite _frontSpriteRef;
+        [SerializeField] private Sprite _backSpriteRef;
 
         private PokerCard _card;
         private bool _faceUp;
@@ -54,6 +56,7 @@ namespace SHIN
             if (this == null || version != _applyVersion)
                 return;
 
+            ApplyInstanceSpriteFallback();
             ApplyVisual();
         }
 
@@ -93,7 +96,16 @@ namespace SHIN
                     return;
             }
 
+            ApplyInstanceSpriteFallback();
             ApplyVisual();
+        }
+
+        private void ApplyInstanceSpriteFallback()
+        {
+            if (_frontSprite == null && _frontSpriteRef != null)
+                _frontSprite = _frontSpriteRef;
+            if (_backSprite == null && _backSpriteRef != null)
+                _backSprite = _backSpriteRef;
         }
 
         private void ApplyVisual()
@@ -106,6 +118,7 @@ namespace SHIN
                 if (_frontSprite == null)
                 {
                     SetContentVisible(false);
+                    Debug.LogWarning("[CardObject] 앞면 스프라이트가 없어 내 패/공용 카드를 숨깁니다.");
                     return;
                 }
 
@@ -328,6 +341,17 @@ namespace SHIN
                 if (!_spritesReady)
                     _spriteLoadTask = null;
             }
+        }
+
+        /// <summary>아틀라스 실패 시에도 프리팹에 꽂아 둔 스프라이트로 채운다.</summary>
+        public static void SeedSpriteFallback(Sprite front, Sprite back)
+        {
+            if (_frontSprite == null && front != null)
+                _frontSprite = front;
+            if (_backSprite == null && back != null)
+                _backSprite = back;
+            if (_frontSprite != null && _backSprite != null)
+                _spritesReady = true;
         }
 
         private static Sprite ResolveSprite(SpriteAtlas atlas, string exactName)

@@ -15,6 +15,9 @@ namespace SHIN
         [SerializeField] private InGameManager _inGameManager;
         [SerializeField] private SoundManager _soundManager;
 
+        private PlayerData _playerData;
+        private Task<PlayerData> _playerDataLoadTask;
+
         public ResourceManager ResourceManager
         {
             get
@@ -51,6 +54,45 @@ namespace SHIN
             }
         }
 
+        public PlayerData PlayerData => _playerData;
+
+        public Task<PlayerData> EnsurePlayerDataAsync()
+        {
+            if (_playerData != null)
+                return Task.FromResult(_playerData);
+
+            if (_playerDataLoadTask != null)
+                return _playerDataLoadTask;
+
+            _playerDataLoadTask = LoadPlayerDataAsync();
+            return _playerDataLoadTask;
+        }
+
+        private async Task<PlayerData> LoadPlayerDataAsync()
+        {
+            try
+            {
+                var resourceManager = ResourceManager;
+                if (resourceManager == null)
+                    return null;
+
+                var so = await resourceManager.LoadAsync<PlayerDataSO>(PublicVariable.Address.PlayerDataSO);
+                if (so == null || so.Player == null)
+                {
+                    Debug.LogError("[GameManager] PlayerDataSO 로드에 실패했습니다.");
+                    return null;
+                }
+
+                _playerData = so.Player;
+                return _playerData;
+            }
+            finally
+            {
+                if (_playerData == null)
+                    _playerDataLoadTask = null;
+            }
+        }
+
         private void Start()
         {
             TestShowOpponentSelectUI();
@@ -74,6 +116,10 @@ namespace SHIN
 
         private async Task GameStartAsync(OpponentData opponentData)
         {
+            await EnsurePlayerDataAsync();
+            if (this == null)
+                return;
+
             // Versus 연출과 인게임/캐릭터 프리로드를 병렬로 진행
             var preloadTask = PreloadMatchResourcesAsync(opponentData);
 
@@ -132,9 +178,33 @@ namespace SHIN
 
         private async Task PreloadMatchResourcesAsync(OpponentData opponentData)
         {
+            var playerData = await EnsurePlayerDataAsync();
+            if (this == null)
+                return;
+
             var uiPreload = UIManager.PreloadInGameUIAsync();
             var opponentPreload = PreloadOpponentAsync(opponentData);
-            await Task.WhenAll(uiPreload, opponentPreload);
+            var voicePreload = PreloadMatchVoicesAsync(playerData, opponentData);
+            await Task.WhenAll(uiPreload, opponentPreload, voicePreload);
+        }
+
+        private async Task PreloadMatchVoicesAsync(PlayerData playerData, OpponentData opponentData)
+        {
+            var soundManager = SoundManager;
+            if (soundManager == null)
+                return;
+
+            var addresses = new List<string>
+            {
+                PublicVariable.Address.AnnouncerShowdown,
+                PublicVariable.Address.AnnouncerWin,
+                PublicVariable.Address.AnnouncerLose,
+                PublicVariable.Address.InGameBgm
+            };
+            playerData?.CollectVoiceAddresses(addresses);
+            opponentData?.CollectVoiceAddresses(addresses);
+
+            await soundManager.PreloadAsync(addresses);
         }
 
         private async Task PreloadOpponentAsync(OpponentData opponentData)

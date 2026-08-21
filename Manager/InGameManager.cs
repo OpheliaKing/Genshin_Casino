@@ -6,15 +6,21 @@ namespace SHIN
 {
     public class InGameManager : ManagerBase
     {
-        private const int DefaultPlayerStack = 100;
         private const int SmallBlind = 5;
         private const int BigBlind = 10;
 
         private const float StartAnnounceHoldMin = 1f;
         private const float StartAnnounceHoldMax = 3f;
+        private const float HandResultAnnounceHold = 1.35f;
         private const float TurnAnnounceHold = 1f;
         private const float OpponentThinkDelayMin = 3f;
         private const float OpponentThinkDelayMax = 4.5f;
+        private const float OpponentActionReactDelayMin = 1f;
+        private const float OpponentActionReactDelayMax = 2f;
+        private const float FoldResultDelayMin = 2f;
+        private const float FoldResultDelayMax = 3f;
+        private const float ShowdownReactDelayMin = 1.5f;
+        private const float ShowdownReactDelayMax = 2.5f;
 
         private OpponentData _opponentData;
         private InGameUI _ui;
@@ -42,6 +48,8 @@ namespace SHIN
         private PokerCard _opponentHole1;
         private readonly List<PokerCard> _board = new();
         private PokerStreet _street;
+        private PokerStreet _displayedStreet = (PokerStreet)(-1);
+        private bool _hasPlayerHoleCards;
 
         public OpponentData OpponentData => _opponentData;
         public int PlayerToCall => Mathf.Max(0, _currentBet - _playerStreetBet);
@@ -89,10 +97,21 @@ namespace SHIN
                 return;
 
             inGameUI.BindMatch(this);
-            _playerStack = DefaultPlayerStack;
+
+            var playerData = GameManager.Instance != null
+                ? await GameManager.Instance.EnsurePlayerDataAsync()
+                : null;
+            if (this == null || inGameUI == null)
+                return;
+
+            var playerGold = playerData != null ? playerData.haveGold : 100;
+            _playerStack = Mathf.Max(BigBlind, playerGold);
             _opponentStack = Mathf.Max(BigBlind, _opponentData.haveGold);
             _dealerIsPlayer = false;
             _matchOver = false;
+            _hasPlayerHoleCards = false;
+            _board.Clear();
+            RefreshHud();
         }
 
         /// <summary>
@@ -102,6 +121,8 @@ namespace SHIN
         {
             if (_ui == null || _matchOver)
                 return;
+
+            GameManager.Instance?.SoundManager?.PlayBgm(PublicVariable.Address.InGameBgm);
 
             // 표정(GAME_START)과 시작 대사를 같은 타이밍에
             _ui.ShowOpponentReaction(CharacterExpressionType.GAME_START);
@@ -135,7 +156,7 @@ namespace SHIN
         {
             if (_playerStack <= 0 || _opponentStack <= 0)
             {
-                EndMatch();
+                await EndMatchAsync();
                 return;
             }
 
@@ -151,13 +172,18 @@ namespace SHIN
             _currentBet = 0;
             _board.Clear();
             _street = PokerStreet.Preflop;
+            _hasPlayerHoleCards = false;
             _deck = new PokerDeck();
+
+            // 새 핸드 시작 직후엔 패 표기를 비워 둔다
+            RefreshHud();
 
             PostBlinds();
             _playerHole0 = _deck.Draw();
             _playerHole1 = _deck.Draw();
             _opponentHole0 = _deck.Draw();
             _opponentHole1 = _deck.Draw();
+            _hasPlayerHoleCards = true;
 
             await RefreshTableAsync(false, resetCards: true);
             _handBusy = false;
@@ -204,8 +230,16 @@ namespace SHIN
 
         private void ApplyAction(bool isPlayer, PokerAction action)
         {
+            _ = ApplyActionAsync(isPlayer, action);
+        }
+
+        private async Task ApplyActionAsync(bool isPlayer, PokerAction action)
+        {
             if (_matchOver || (isPlayer && _playerFolded) || (!isPlayer && _opponentFolded))
                 return;
+
+            if (isPlayer)
+                _waitingPlayer = false;
 
             var toCall = isPlayer
                 ? Mathf.Max(0, _currentBet - _playerStreetBet)
@@ -223,6 +257,9 @@ namespace SHIN
             if ((action == PokerAction.Bet || action == PokerAction.Raise || action == PokerAction.Call) && stack <= toCall)
                 action = toCall > 0 ? PokerAction.Call : PokerAction.AllIn;
 
+            var potBefore = _pot;
+            var resolved = action;
+
             switch (action)
             {
                 case PokerAction.Fold:
@@ -230,9 +267,17 @@ namespace SHIN
                         _playerFolded = true;
                     else
                         _opponentFolded = true;
-                    _ = EndHandByFoldAsync(!isPlayer);
+                    _ui?.PlayBetFx(isPlayer, PokerAction.Fold, 0);
+                    if (isPlayer)
+                        _ui?.PlayPlayerVoice(CharacterExpressionType.ACTION_FOLD);
+                    else
+                        await PlayOpponentActionReactionAsync(PokerAction.Fold);
+                    if (this == null || _matchOver)
+                        return;
+                    await EndHandByFoldAsync(!isPlayer);
                     return;
                 case PokerAction.Check:
+                    _ui?.PlayBetFx(isPlayer, PokerAction.Check, 0);
                     break;
                 case PokerAction.Call:
                     PutChips(isPlayer, toCall);
@@ -265,8 +310,45 @@ namespace SHIN
             else
                 _opponentActed = true;
 
-            RefreshHud(StreetLabel());
-            _ = AfterActionAsync();
+            var paid = _pot - potBefore;
+            if (resolved != PokerAction.Check)
+                _ui?.PlayBetFx(isPlayer, resolved, paid);
+
+            if (isPlayer)
+                _ui?.PlayPlayerVoice(ExpressionForAction(resolved));
+
+            RefreshHud();
+
+            if (!isPlayer)
+                await PlayOpponentActionReactionAsync(resolved);
+            if (this == null || _matchOver)
+                return;
+
+            await AfterActionAsync();
+        }
+
+        private async Task PlayOpponentActionReactionAsync(PokerAction action)
+        {
+            var expression = ExpressionForAction(action);
+            _ui?.ShowOpponentReaction(expression);
+
+            var delayMs = Mathf.RoundToInt(
+                Random.Range(OpponentActionReactDelayMin, OpponentActionReactDelayMax) * 1000f);
+            await Task.Delay(delayMs);
+        }
+
+        private static CharacterExpressionType ExpressionForAction(PokerAction action)
+        {
+            return action switch
+            {
+                PokerAction.Check => CharacterExpressionType.ACTION_CHECK,
+                PokerAction.Call => CharacterExpressionType.ACTION_CALL,
+                PokerAction.Bet => CharacterExpressionType.ACTION_BET,
+                PokerAction.Raise => CharacterExpressionType.ACTION_RAISE,
+                PokerAction.Fold => CharacterExpressionType.ACTION_FOLD,
+                PokerAction.AllIn => CharacterExpressionType.ACTION_ALL_IN,
+                _ => CharacterExpressionType.NORMAL
+            };
         }
 
         private void ResetActor(bool isPlayer)
@@ -344,7 +426,7 @@ namespace SHIN
                     _ui?.SetOpponentExpression(CharacterExpressionType.NORMAL);
 
                     _waitingPlayer = true;
-                    RefreshHud("당신 차례");
+                    RefreshHud();
                     return;
                 }
 
@@ -362,7 +444,7 @@ namespace SHIN
                 _ui?.ShowOpponentReaction(CharacterExpressionType.TURN_START);
 
                 _waitingPlayer = false;
-                RefreshHud("상대 생각 중...");
+                RefreshHud();
 
                 // 턴 UI 직후 바로 행동하면 템포가 기계적이라, 사람처럼 랜덤 사고 시간
                 var thinkMs = Mathf.RoundToInt(Random.Range(OpponentThinkDelayMin, OpponentThinkDelayMax) * 1000f);
@@ -465,6 +547,23 @@ namespace SHIN
             await RefreshTableAsync(true);
             _ui?.RevealOpponentCards();
 
+            // 쇼다운 시작: 카드 공개 직후 전용 대사·표정 + ShowDownUI 연출
+            _ui?.ShowOpponentReaction(CharacterExpressionType.SHOWDOWN);
+            if (_ui != null)
+            {
+                var hold = Random.Range(ShowdownReactDelayMin, ShowdownReactDelayMax);
+                await _ui.PlayShowDownAsync(hold);
+            }
+            else
+            {
+                var showdownDelayMs = Mathf.RoundToInt(
+                    Random.Range(ShowdownReactDelayMin, ShowdownReactDelayMax) * 1000f);
+                await Task.Delay(showdownDelayMs);
+            }
+
+            if (this == null || _matchOver)
+                return;
+
             var playerScore = PokerHandEvaluator.Evaluate(_playerHole0, _playerHole1, _board.ToArray());
             var opponentScore = PokerHandEvaluator.Evaluate(_opponentHole0, _opponentHole1, _board.ToArray());
             var compare = playerScore.CompareTo(opponentScore);
@@ -472,25 +571,35 @@ namespace SHIN
             if (compare > 0)
             {
                 _playerStack += _pot;
-                RefreshHud($"승리! {playerScore.DisplayName}");
-                // 플레이어 승 → 캐릭터 패
-                _ui?.SetOpponentExpression(CharacterExpressionType.HAND_LOSE);
+                RefreshHud();
+                _ui?.ShowOpponentReaction(CharacterExpressionType.HAND_LOSE);
+                _pot = 0;
+                if (_ui != null)
+                    await _ui.PlayStartAnnounceAsync("승리", HandResultAnnounceHold);
             }
             else if (compare < 0)
             {
                 _opponentStack += _pot;
-                RefreshHud($"패배... 상대 {opponentScore.DisplayName}");
-                _ui?.SetOpponentExpression(CharacterExpressionType.HAND_WIN);
+                RefreshHud();
+                _ui?.ShowOpponentReaction(CharacterExpressionType.HAND_WIN);
+                _pot = 0;
+                if (_ui != null)
+                    await _ui.PlayStartAnnounceAsync("패배", HandResultAnnounceHold);
             }
             else
             {
                 var half = _pot / 2;
                 _playerStack += half;
                 _opponentStack += _pot - half;
-                RefreshHud($"무승부 {playerScore.DisplayName}");
+                RefreshHud();
+                _pot = 0;
+                if (_ui != null)
+                    await _ui.PlayStartAnnounceAsync("무승부", HandResultAnnounceHold);
             }
 
-            _pot = 0;
+            if (this == null || _matchOver)
+                return;
+
             await FinishHandAsync();
         }
 
@@ -500,24 +609,36 @@ namespace SHIN
             if (playerWins)
             {
                 _playerStack += _pot;
-                RefreshHud("상대 폴드. 팟 획득");
-                _ui?.SetOpponentExpression(CharacterExpressionType.HAND_LOSE);
+                RefreshHud();
+                _ui?.ShowOpponentReaction(CharacterExpressionType.HAND_LOSE);
             }
             else
             {
                 _opponentStack += _pot;
-                RefreshHud("폴드. 상대가 팟 획득");
-                _ui?.SetOpponentExpression(CharacterExpressionType.HAND_WIN);
+                RefreshHud();
+                _ui?.ShowOpponentReaction(CharacterExpressionType.HAND_WIN);
             }
 
             _pot = 0;
+
+            // 폴드 직후 승리/패배 안내가 뜨지 않도록 상대 반응을 잠깐 보여 준다.
+            var delayMs = Mathf.RoundToInt(Random.Range(FoldResultDelayMin, FoldResultDelayMax) * 1000f);
+            await Task.Delay(delayMs);
+            if (this == null || _matchOver)
+                return;
+
+            if (_ui != null)
+                await _ui.PlayStartAnnounceAsync(playerWins ? "승리" : "패배", HandResultAnnounceHold);
+            if (this == null || _matchOver)
+                return;
+
             await FinishHandAsync();
         }
 
         private async Task FinishHandAsync()
         {
             _handBusy = true;
-            await Task.Delay(1600);
+            await Task.Delay(400);
             if (this == null)
                 return;
 
@@ -526,23 +647,28 @@ namespace SHIN
 
             if (_playerStack <= 0 || _opponentStack <= 0)
             {
-                EndMatch();
+                await EndMatchAsync();
                 return;
             }
 
             await StartHandAsync();
         }
 
-        private void EndMatch()
+        private async Task EndMatchAsync()
         {
             _matchOver = true;
             _waitingPlayer = false;
             var win = _playerStack > 0;
             RefreshHud(win ? "매치 승리" : "매치 패배");
 
+            GameManager.Instance?.SoundManager?.StopBgm();
+
             // 캐릭터 기준: 플레이어 승리 → LOSE, 플레이어 패배 → WIN
             if (_ui != null)
+            {
                 _ui.ShowOpponentReaction(win ? CharacterExpressionType.LOSE : CharacterExpressionType.WIN);
+                await _ui.PlayGameResultAsync(win);
+            }
         }
 
         private async Task RefreshTableAsync(bool revealOpponent, bool resetCards = false)
@@ -556,11 +682,12 @@ namespace SHIN
                 _board,
                 revealOpponent,
                 resetCards);
-            RefreshHud(StreetLabel());
+            RefreshHud();
         }
 
-        private void RefreshHud(string status)
+        private void RefreshHud(string statusOverride = null)
         {
+            var status = statusOverride ?? PlayerHandStatus();
             _ui?.RefreshHud(
                 status,
                 _pot,
@@ -568,19 +695,21 @@ namespace SHIN
                 _opponentStack,
                 _waitingPlayer,
                 PlayerToCall,
-                _matchOver);
+                _matchOver,
+                _currentBet);
+
+            var animate = _displayedStreet != _street;
+            _displayedStreet = _street;
+            _ui?.SetStreetProgress(_street, animate);
         }
 
-        private string StreetLabel()
+        private string PlayerHandStatus()
         {
-            return _street switch
-            {
-                PokerStreet.Preflop => "프리플랍",
-                PokerStreet.Flop => "플랍",
-                PokerStreet.Turn => "턴",
-                PokerStreet.River => "리버",
-                _ => "쇼다운"
-            };
+            if (!_hasPlayerHoleCards)
+                return "내 패 · -";
+
+            var score = PokerHandEvaluator.Evaluate(_playerHole0, _playerHole1, _board.ToArray());
+            return $"내 패 · {score.DisplayName}";
         }
     }
 }

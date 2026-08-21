@@ -25,7 +25,6 @@ namespace SHIN
         [SerializeField] private CanvasGroup _opponentNamePanel;
         [SerializeField] private TextMeshProUGUI _playerNameText;
         [SerializeField] private TextMeshProUGUI _opponentNameText;
-        [SerializeField] private string _playerDisplayName = "나";
 
         [Header("Motion")]
         [SerializeField] private float _enterOffsetX = 900f;
@@ -73,9 +72,15 @@ namespace SHIN
 
             var startedAt = Time.unscaledTime;
 
-            ApplyNames(opponentData);
+            var playerData = GameManager.Instance != null
+                ? await GameManager.Instance.EnsurePlayerDataAsync()
+                : null;
+            if (this == null)
+                return;
+
+            ApplyNames(opponentData, playerData);
             await Task.WhenAll(
-                ApplyPlayerVsImageAsync(),
+                ApplyPlayerVsImageAsync(playerData),
                 ApplyOpponentVsImageAsync(opponentData));
             if (this == null)
                 return;
@@ -170,21 +175,32 @@ namespace SHIN
             onComplete?.Invoke();
         }
 
-        private void ApplyNames(OpponentData opponentData)
+        private void ApplyNames(OpponentData opponentData, PlayerData playerData)
         {
             if (_playerNameText != null)
-                _playerNameText.text = _playerDisplayName;
+            {
+                _playerNameText.text = playerData != null && !string.IsNullOrEmpty(playerData.name)
+                    ? playerData.name
+                    : "플레이어";
+            }
 
             if (_opponentNameText != null)
                 _opponentNameText.text = opponentData != null ? opponentData.name : string.Empty;
         }
 
-        private Task ApplyPlayerVsImageAsync()
+        private Task ApplyPlayerVsImageAsync(PlayerData playerData)
         {
-            return ApplyVsImageAsync(
-                _playerImage,
-                PublicVariable.Address.PlayerVs,
-                PublicVariable.Address.CharacterAtlas);
+            if (playerData == null || string.IsNullOrEmpty(playerData.vsImagePath))
+            {
+                Debug.LogWarning("[VersusUI] PlayerData vsImagePath가 비어 있습니다.");
+                return Task.CompletedTask;
+            }
+
+            var atlas = !string.IsNullOrEmpty(playerData.atlasAddress)
+                ? playerData.atlasAddress
+                : PublicVariable.Address.CharacterAtlas;
+
+            return ApplyVsImageAsync(_playerImage, playerData.vsImagePath, atlas);
         }
 
         private Task ApplyOpponentVsImageAsync(OpponentData opponentData)

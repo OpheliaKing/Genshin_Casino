@@ -48,13 +48,33 @@ namespace SHIN
     {
         public static HandScore Evaluate(PokerCard hole0, PokerCard hole1, PokerCard[] board)
         {
+            board ??= Array.Empty<PokerCard>();
+            if (board.Length == 0)
+                return EvaluateHoleOnly(hole0, hole1);
+
             var cards = new PokerCard[2 + board.Length];
             cards[0] = hole0;
             cards[1] = hole1;
             for (var i = 0; i < board.Length; i++)
                 cards[2 + i] = board[i];
 
+            if (cards.Length < 5)
+                return EvaluateHoleOnly(hole0, hole1);
+
             return EvaluateBestFive(cards);
+        }
+
+        /// <summary>프리플랍 등 보드가 없을 때 손패 2장만으로 등급을 본다.</summary>
+        public static HandScore EvaluateHoleOnly(PokerCard hole0, PokerCard hole1)
+        {
+            var r0 = (int)hole0.Rank;
+            var r1 = (int)hole1.Rank;
+            if (r0 == r1)
+                return Pack(HandCategory.OnePair, r0);
+
+            var high = Math.Max(r0, r1);
+            var low = Math.Min(r0, r1);
+            return Pack(HandCategory.HighCard, high, low);
         }
 
         public static HandScore EvaluateBestFive(PokerCard[] cards)

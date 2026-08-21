@@ -21,6 +21,13 @@ namespace SHIN
         HAND_WIN = 8,
         HAND_LOSE = 9,
         TURN_START = 10,
+        ACTION_CHECK = 11,
+        ACTION_CALL = 12,
+        ACTION_BET = 13,
+        ACTION_RAISE = 14,
+        ACTION_FOLD = 15,
+        ACTION_ALL_IN = 16,
+        SHOWDOWN = 17,
     }
 
     /// <summary>
@@ -76,6 +83,10 @@ namespace SHIN
         [SerializedDictionary("State", "Dialog")]
         public SerializedDictionary<CharacterExpressionType, DialogLines> dialogs = new();
 
+        [Tooltip("상황별 보이스 Addressables 주소 (SE). Dialog와 같은 State 키")]
+        [SerializedDictionary("State", "Voice")]
+        public SerializedDictionary<CharacterExpressionType, DialogLines> voices = new();
+
         [Tooltip("표정별 눈 스프라이트 루프")]
         [SerializedDictionary("State", "Eye Loop")]
         public SerializedDictionary<CharacterExpressionType, ExpressionLoopData> eyeExpressions = new();
@@ -89,7 +100,34 @@ namespace SHIN
             if (dialogs == null || !dialogs.TryGetValue(type, out var entry) || entry?.lines == null)
                 return null;
 
-            return PickRandomDialog(entry.lines);
+            return PickRandomLine(entry.lines);
+        }
+
+        public string PickVoice(CharacterExpressionType type)
+        {
+            if (voices == null || !voices.TryGetValue(type, out var entry) || entry?.lines == null)
+                return null;
+
+            return PickRandomLine(entry.lines);
+        }
+
+        public void CollectVoiceAddresses(List<string> into)
+        {
+            if (into == null || voices == null)
+                return;
+
+            foreach (var pair in voices)
+            {
+                var lines = pair.Value?.lines;
+                if (lines == null)
+                    continue;
+
+                for (var i = 0; i < lines.Count; i++)
+                {
+                    if (!string.IsNullOrWhiteSpace(lines[i]))
+                        into.Add(lines[i].Trim());
+                }
+            }
         }
 
         public bool TryGetEyeExpression(CharacterExpressionType type, out ExpressionLoopData data)
@@ -104,7 +142,7 @@ namespace SHIN
             return mouthExpressions != null && mouthExpressions.TryGetValue(type, out data) && data != null;
         }
 
-        private static string PickRandomDialog(List<string> lines)
+        private static string PickRandomLine(List<string> lines)
         {
             if (lines == null || lines.Count == 0)
                 return null;
@@ -136,7 +174,7 @@ namespace SHIN
     [CreateAssetMenu(fileName = "OpponentDataSO", menuName = "SHIN/Opponent Data SO")]
     public class OpponentDataSO : ScriptableObject
     {
-        [SerializeField] private List<OpponentData> _opponentList = new();
+        [SerializeField] private List<OpponentData> _opponentList = new List<OpponentData>();
 
         public IReadOnlyList<OpponentData> OpponentList => _opponentList;
 
@@ -157,3 +195,4 @@ namespace SHIN
         }
     }
 }
+

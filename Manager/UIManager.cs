@@ -29,6 +29,7 @@ namespace SHIN
             await resourceManager.PreloadLabelAsync(PublicVariable.Label.Preload);
             await resourceManager.PreloadLabelAsync(PublicVariable.Label.InGame);
             await CardObject.PreloadSpritesAsync();
+            await GameResultUI.PreloadSpritesAsync();
             await EnsureFadeUIAsync();
         }
 
