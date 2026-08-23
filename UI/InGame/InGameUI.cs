@@ -24,6 +24,7 @@ namespace SHIN
         [SerializeField] private DialogUI _dialogUI;
         [SerializeField] private GameResultUI _gameResultUI;
         [SerializeField] private ShowDownUI _showDownUI;
+        [SerializeField] private ShowdownHandUI _showdownHandUI;
         [SerializeField] private StreetProgressUI _streetProgressUI;
         [SerializeField] private InGameBetFx _betFx;
 
@@ -40,6 +41,11 @@ namespace SHIN
         private Tween _potTween;
 
         private const float PotTweenDuration = 0.45f;
+        private const float ShowdownBannerHold = 1.6f;
+        private const int ShowdownAfterBannerDelayMs = 1000;
+        private const int ShowdownOpponentRevealDelayMs = 1500;
+        private const int ShowdownWinnerRevealDelayMs = 1500;
+        private const int ShowdownHandHoldMs = 2200;
 
         public async Task SetupAsync(OpponentData opponentData)
         {
@@ -48,6 +54,8 @@ namespace SHIN
             HideDialog();
             _gameResultUI?.HideImmediate();
             _showDownUI?.HideImmediate();
+            _showdownHandUI?.HideImmediate();
+            ClearShowdownVisuals();
             EnsureStreetProgressUI();
             _streetProgressUI?.ResetToPreflop();
             HideExistingCardsInSlots(_playerCardSlots);
@@ -109,14 +117,6 @@ namespace SHIN
             if (_opponentFace == null)
                 return;
 
-            // 구 UIBlinkLoopPlayer와 충돌 방지
-            var blinkers = model.GetComponentsInChildren<UIBlinkLoopPlayer>(true);
-            for (var i = 0; i < blinkers.Length; i++)
-            {
-                if (blinkers[i] != null)
-                    blinkers[i].enabled = false;
-            }
-
             _opponentFace.Bind(opponentData);
         }
 
@@ -159,7 +159,8 @@ namespace SHIN
             IReadOnlyList<PokerCard> opponentHole,
             IReadOnlyList<PokerCard> board,
             bool revealOpponent,
-            bool resetCards = false)
+            bool resetCards = false,
+            bool showdownReveal = false)
         {
             if (resetCards)
             {
@@ -168,7 +169,7 @@ namespace SHIN
                     return;
             }
 
-            await EnsureHoleCardsAsync(playerHole, _playerCardSlots, _playerCards, true);
+            await EnsureHoleCardsAsync(playerHole, _playerCardSlots, _playerCards, true, playDrawSound: true);
             if (this == null)
                 return;
 
@@ -180,7 +181,15 @@ namespace SHIN
             for (var i = 0; i < _opponentCards.Count; i++)
             {
                 if (_opponentCards[i] != null)
-                    await _opponentCards[i].SetFaceUpAsync(revealOpponent);
+                {
+                    await _opponentCards[i].SetFaceUpAsync(revealOpponent, playRevealSound: revealOpponent, showdownReveal);
+                    if (showdownReveal && revealOpponent && i < _opponentCards.Count - 1)
+                    {
+                        await Task.Delay(120);
+                        if (this == null)
+                            return;
+                    }
+                }
             }
 
             if (this == null)
@@ -195,7 +204,7 @@ namespace SHIN
                 _opponentCards[i]?.SetFaceUp(true);
         }
 
-        public Task PlayStartAnnounceAsync(string text = "게임 시작", float holdSeconds = 2f)
+        public Task PlayStartAnnounceAsync(string text = "게임 시작", float holdSeconds = 2f, bool playPopupSound = false)
         {
             EnsureAnnouncePanels();
             if (_startPanel == null)
@@ -204,6 +213,22 @@ namespace SHIN
                 return Task.CompletedTask;
             }
 
+            if (playPopupSound)
+                InGameSfx.PlayUiShowTurnPopup();
+
+            return _startPanel.PlayAsync(text, holdSeconds);
+        }
+
+        public Task PlayHandResultAnnounceAsync(string text, float holdSeconds = 2f)
+        {
+            EnsureAnnouncePanels();
+            if (_startPanel == null)
+            {
+                Debug.LogWarning("[InGameUI] StartPanel가 연결되지 않았습니다.");
+                return Task.CompletedTask;
+            }
+
+            InGameSfx.PlayHandWin();
             return _startPanel.PlayAsync(text, holdSeconds);
         }
 
@@ -216,6 +241,7 @@ namespace SHIN
                 return Task.CompletedTask;
             }
 
+            InGameSfx.PlayUiShowTurnPopup();
             return _turnPanel.PlayAsync(text, holdSeconds);
         }
 
@@ -259,6 +285,65 @@ namespace SHIN
             }
 
             return _showDownUI.PlayAsync(holdSeconds);
+        }
+
+        /// <summary>
+        /// SHOWDOWN 배너 종료 → 1초 → 플레이어 족보 → 1.5초 → 상대 족보 → 1.5초 → 승자 연출.
+        /// </summary>
+        public async Task PlayShowdownRevealAsync(
+            HandEvaluation playerHand,
+            HandEvaluation opponentHand,
+            int compare)
+        {
+            EnsureShowDownUI();
+            EnsureShowdownHandUI();
+            ClearShowdownVisuals();
+
+            await PlayShowDownAsync(ShowdownBannerHold);
+            if (this == null)
+                return;
+
+            HideDialog();
+
+            await Task.Delay(ShowdownAfterBannerDelayMs);
+            if (this == null)
+                return;
+
+            if (_showdownHandUI != null)
+            {
+                _showdownHandUI.transform.SetAsLastSibling();
+
+                var isTie = compare == 0;
+                var playerLabel = playerHand.BuildShowdownLabel(opponentHand, compare > 0, isTie);
+                var opponentLabel = opponentHand.BuildShowdownLabel(playerHand, compare < 0, isTie);
+
+                // 플레이어 공개 직후 카드 하이라이트도 같이
+                ApplyShowdownHighlights(playerHand, opponentHand, compare);
+
+                await _showdownHandUI.ShowSequentialAsync(
+                    playerLabel,
+                    opponentLabel,
+                    compare,
+                    ShowdownOpponentRevealDelayMs,
+                    ShowdownWinnerRevealDelayMs);
+            }
+            else
+            {
+                ApplyShowdownHighlights(playerHand, opponentHand, compare);
+            }
+
+            if (this == null)
+                return;
+
+            if (compare != 0)
+                PulseShowdownWinner(compare > 0, playerHand, opponentHand);
+
+            await Task.Delay(ShowdownHandHoldMs);
+            if (this == null)
+                return;
+
+            _showdownHandUI?.HideImmediate();
+            ClearShowdownVisuals();
         }
 
         public void ShowOpponentReaction(CharacterExpressionType type, bool showDialog = true)
@@ -390,6 +475,151 @@ namespace SHIN
                 _showDownUI = t.GetComponent<ShowDownUI>() ?? t.gameObject.AddComponent<ShowDownUI>();
         }
 
+        private void EnsureShowdownHandUI()
+        {
+            if (_showdownHandUI != null)
+                return;
+
+            _showdownHandUI = GetComponentInChildren<ShowdownHandUI>(true);
+            if (_showdownHandUI != null)
+                return;
+
+            var t = transform.Find("ShowdownHandUI");
+            if (t != null)
+                _showdownHandUI = t.GetComponent<ShowdownHandUI>();
+
+            if (_showdownHandUI == null)
+                Debug.LogWarning("[InGameUI] ShowdownHandUI가 프리팹에 연결되어 있지 않습니다.");
+        }
+
+        private void ClearShowdownVisuals()
+        {
+            ResetShowdownCards(_playerCards);
+            ResetShowdownCards(_opponentCards);
+            ResetShowdownCards(_communityCards);
+        }
+
+        private static void ResetShowdownCards(List<CardObject> cards)
+        {
+            for (var i = 0; i < cards.Count; i++)
+                cards[i]?.ResetShowdownVisual();
+        }
+
+        private void ApplyShowdownHighlights(
+            HandEvaluation playerHand,
+            HandEvaluation opponentHand,
+            int compare)
+        {
+            var playerKeys = ToCardKeySet(playerHand.BestFive);
+            var opponentKeys = ToCardKeySet(opponentHand.BestFive);
+
+            var playerWins = compare > 0;
+            var opponentWins = compare < 0;
+            var isTie = compare == 0;
+
+            HighlightCardList(_playerCards, playerKeys, isTie || playerWins);
+            HighlightCardList(_opponentCards, opponentKeys, isTie || opponentWins);
+            HighlightCommunityCards(playerKeys, opponentKeys, compare);
+        }
+
+        private void HighlightCommunityCards(
+            HashSet<(CardRank rank, CardSuit suit)> playerKeys,
+            HashSet<(CardRank rank, CardSuit suit)> opponentKeys,
+            int compare)
+        {
+            var isTie = compare == 0;
+            var playerWins = compare > 0;
+            var winnerKeys = isTie
+                ? UnionCardKeys(playerKeys, opponentKeys)
+                : playerWins
+                    ? playerKeys
+                    : opponentKeys;
+
+            for (var i = 0; i < _communityCards.Count; i++)
+            {
+                var card = _communityCards[i];
+                if (card == null || !card.HasBoundCard)
+                    continue;
+
+                var key = (card.BoundCard.Rank, card.BoundCard.Suit);
+                var contributing = playerKeys.Contains(key) || opponentKeys.Contains(key);
+                var winnerSide = contributing && winnerKeys.Contains(key);
+                card.SetShowdownVisual(contributing, winnerSide);
+            }
+        }
+
+        private void PulseShowdownWinner(
+            bool playerWins,
+            HandEvaluation playerHand,
+            HandEvaluation opponentHand)
+        {
+            var winnerKeys = playerWins
+                ? ToCardKeySet(playerHand.BestFive)
+                : ToCardKeySet(opponentHand.BestFive);
+
+            PulseCardList(_playerCards, winnerKeys, playerWins);
+            PulseCardList(_opponentCards, winnerKeys, !playerWins);
+            PulseCardList(_communityCards, winnerKeys, true);
+        }
+
+        private static HashSet<(CardRank rank, CardSuit suit)> ToCardKeySet(PokerCard[] cards)
+        {
+            var set = new HashSet<(CardRank, CardSuit)>();
+            if (cards == null)
+                return set;
+
+            for (var i = 0; i < cards.Length; i++)
+                set.Add((cards[i].Rank, cards[i].Suit));
+
+            return set;
+        }
+
+        private static HashSet<(CardRank rank, CardSuit suit)> UnionCardKeys(
+            HashSet<(CardRank rank, CardSuit suit)> a,
+            HashSet<(CardRank rank, CardSuit suit)> b)
+        {
+            var set = new HashSet<(CardRank, CardSuit)>(a);
+            set.UnionWith(b);
+            return set;
+        }
+
+        private static void HighlightCardList(
+            List<CardObject> cards,
+            HashSet<(CardRank rank, CardSuit suit)> contributingKeys,
+            bool winnerSide)
+        {
+            for (var i = 0; i < cards.Count; i++)
+            {
+                var card = cards[i];
+                if (card == null || !card.HasBoundCard)
+                    continue;
+
+                var key = (card.BoundCard.Rank, card.BoundCard.Suit);
+                var contributing = contributingKeys.Contains(key);
+                card.SetShowdownVisual(contributing, winnerSide && contributing);
+            }
+        }
+
+        private static void PulseCardList(
+            List<CardObject> cards,
+            HashSet<(CardRank rank, CardSuit suit)> winnerKeys,
+            bool sideIsWinner)
+        {
+            if (!sideIsWinner)
+                return;
+
+            for (var i = 0; i < cards.Count; i++)
+            {
+                var card = cards[i];
+                if (card == null || !card.HasBoundCard)
+                    continue;
+
+                var key = (card.BoundCard.Rank, card.BoundCard.Suit);
+                if (winnerKeys.Contains(key))
+                    card.PlayShowdownWinnerPulse();
+            }
+        }
+
         private void EnsureStreetProgressUI()
         {
             if (_streetProgressUI != null)
@@ -450,7 +680,8 @@ namespace SHIN
             IReadOnlyList<PokerCard> cards,
             Transform[] slots,
             List<CardObject> bucket,
-            bool faceUp)
+            bool faceUp,
+            bool playDrawSound = false)
         {
             // 파괴된 참조가 남아 스폰을 건너뛰지 않도록 정리
             for (var i = bucket.Count - 1; i >= 0; i--)
@@ -462,7 +693,7 @@ namespace SHIN
             if (bucket.Count > 0)
                 return;
 
-            await SpawnCardsAsync(cards, slots, bucket, faceUp);
+            await SpawnCardsAsync(cards, slots, bucket, faceUp, playDrawSound);
         }
 
         private async Task EnsureBoardCardsAsync(IReadOnlyList<PokerCard> board)
@@ -510,6 +741,14 @@ namespace SHIN
                 if (this == null)
                     return;
 
+                InGameSfx.PlayCardFlip();
+                if (i < targetCount - 1)
+                {
+                    await Task.Delay(100);
+                    if (this == null)
+                        return;
+                }
+
                 _communityCards.Add(cardObject);
             }
         }
@@ -518,7 +757,8 @@ namespace SHIN
             IReadOnlyList<PokerCard> cards,
             Transform[] slots,
             List<CardObject> bucket,
-            bool faceUp)
+            bool faceUp,
+            bool playDrawSound = false)
         {
             bucket.Clear();
             if (cards == null || slots == null)
@@ -574,6 +814,17 @@ namespace SHIN
                     return;
 
                 bucket.Add(cardObject);
+
+                if (playDrawSound)
+                {
+                    InGameSfx.PlayCardDraw();
+                    if (i < count - 1)
+                    {
+                        await Task.Delay(120);
+                        if (this == null)
+                            return;
+                    }
+                }
             }
         }
 
@@ -666,6 +917,9 @@ namespace SHIN
 
             if (_displayedPot == pot)
                 return;
+
+            if (pot > _displayedPot)
+                InGameSfx.PlayPotUp();
 
             _potTween?.Kill();
             _potTween = DOTween

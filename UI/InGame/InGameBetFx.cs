@@ -34,8 +34,13 @@ namespace SHIN
             if (!string.IsNullOrEmpty(label))
                 PlayCallout(label, Intensity(action));
 
+            if (chipsPaid > 0 && action != PokerAction.Check && action != PokerAction.Fold)
+                InGameSfx.PlayChipBet();
+
             if (chipsPaid <= 0 || from == null || action == PokerAction.Check || action == PokerAction.Fold)
                 return;
+
+            InGameSfx.PlayChipUp();
 
             var count = ChipCount(action, chipsPaid);
             FlyChips(from, count, Intensity(action));

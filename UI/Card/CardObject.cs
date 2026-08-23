@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using DG.Tweening;
 using TMPro;
 using UnityEngine;
 using UnityEngine.U2D;
@@ -24,6 +25,17 @@ namespace SHIN
         private bool _faceUp;
         private bool _bound;
         private int _applyVersion;
+        private CanvasGroup _showdownCanvasGroup;
+        private Vector3 _restLocalScale = Vector3.one;
+        private Color _restImageColor = Color.white;
+        private bool _restCached;
+        private Sequence _showdownSequence;
+
+        private const float DimAlpha = 0.42f;
+        private const float HighlightScale = 1.06f;
+        private const float WinnerTintR = 1f;
+        private const float WinnerTintG = 0.95f;
+        private const float WinnerTintB = 0.75f;
 
         private static Sprite _frontSprite;
         private static Sprite _backSprite;
@@ -38,6 +50,9 @@ namespace SHIN
             EnsureLabels();
             SetContentVisible(false);
         }
+
+        public bool HasBoundCard => _bound;
+        public PokerCard BoundCard => _card;
 
         public void Bind(PokerCard card, bool faceUp)
         {
@@ -69,13 +84,17 @@ namespace SHIN
             _ = ApplyFaceStateAsync();
         }
 
-        public async Task SetFaceUpAsync(bool faceUp)
+        public async Task SetFaceUpAsync(bool faceUp, bool playRevealSound = false, bool showdownReveal = false)
         {
             if (!_bound)
                 return;
 
+            var wasFaceUp = _faceUp;
             _faceUp = faceUp;
             await ApplyFaceStateAsync();
+
+            if (faceUp && !wasFaceUp && playRevealSound)
+                InGameSfx.PlayCardFlip();
         }
 
         private async Task ApplyFaceStateAsync()
@@ -106,6 +125,109 @@ namespace SHIN
                 _frontSprite = _frontSpriteRef;
             if (_backSprite == null && _backSpriteRef != null)
                 _backSprite = _backSpriteRef;
+        }
+
+        public void SetShowdownVisual(bool contributing, bool winnerSide)
+        {
+            if (!_bound)
+                return;
+
+            EnsureShowdownRefs();
+            CacheRestTransform();
+            KillShowdownSequence();
+
+            var alpha = contributing ? 1f : DimAlpha;
+            var scale = contributing ? _restLocalScale * HighlightScale : _restLocalScale;
+
+            if (_showdownCanvasGroup != null)
+                _showdownCanvasGroup.alpha = alpha;
+
+            transform.localScale = scale;
+
+            if (_image != null)
+            {
+                _image.color = winnerSide && contributing
+                    ? new Color(WinnerTintR, WinnerTintG, WinnerTintB, 1f)
+                    : _restImageColor;
+            }
+        }
+
+        public void PlayShowdownWinnerPulse()
+        {
+            if (!_bound)
+                return;
+
+            EnsureShowdownRefs();
+            CacheRestTransform();
+            KillShowdownSequence();
+
+            var highlightedScale = _restLocalScale * HighlightScale;
+            _showdownSequence = DOTween.Sequence()
+                .SetUpdate(true)
+                .SetLink(gameObject, LinkBehaviour.KillOnDestroy)
+                .Append(transform.DOScale(highlightedScale * 1.08f, 0.22f).SetEase(Ease.OutQuad))
+                .Append(transform.DOScale(highlightedScale, 0.18f).SetEase(Ease.InOutQuad))
+                .Append(transform.DOScale(highlightedScale * 1.05f, 0.16f).SetEase(Ease.OutQuad))
+                .Append(transform.DOScale(highlightedScale, 0.14f).SetEase(Ease.InOutQuad));
+        }
+
+        public void ResetShowdownVisual()
+        {
+            KillShowdownSequence();
+
+            if (_showdownCanvasGroup != null)
+                _showdownCanvasGroup.alpha = 1f;
+
+            if (_restCached)
+                transform.localScale = _restLocalScale;
+
+            if (_image != null)
+                _image.color = _restImageColor;
+        }
+
+        private void EnsureShowdownRefs()
+        {
+            if (_image == null)
+                _image = GetComponent<Image>();
+
+            if (_showdownCanvasGroup == null)
+            {
+                _showdownCanvasGroup = GetComponent<CanvasGroup>();
+                if (_showdownCanvasGroup == null)
+                    _showdownCanvasGroup = gameObject.AddComponent<CanvasGroup>();
+            }
+        }
+
+        private void CacheRestTransform()
+        {
+            if (_restCached)
+                return;
+
+            _restLocalScale = transform.localScale;
+            if (_restLocalScale == Vector3.zero)
+                _restLocalScale = Vector3.one;
+
+            if (_image != null)
+                _restImageColor = _image.color;
+
+            _restCached = true;
+        }
+
+        private void KillShowdownSequence()
+        {
+            if (_showdownSequence == null || !_showdownSequence.IsActive())
+            {
+                _showdownSequence = null;
+                return;
+            }
+
+            _showdownSequence.Kill();
+            _showdownSequence = null;
+        }
+
+        private void OnDestroy()
+        {
+            KillShowdownSequence();
         }
 
         private void ApplyVisual()

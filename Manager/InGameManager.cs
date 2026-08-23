@@ -11,7 +11,8 @@ namespace SHIN
 
         private const float StartAnnounceHoldMin = 1f;
         private const float StartAnnounceHoldMax = 3f;
-        private const float HandResultAnnounceHold = 1.35f;
+        private const float HandResultAnnounceHold = 2f;
+        private const float ShowdownBeforeNextHandDelay = 1.2f;
         private const float TurnAnnounceHold = 1f;
         private const float OpponentThinkDelayMin = 3f;
         private const float OpponentThinkDelayMax = 4.5f;
@@ -124,11 +125,13 @@ namespace SHIN
 
             GameManager.Instance?.SoundManager?.PlayBgm(PublicVariable.Address.InGameBgm);
 
+            InGameSfx.PlayCardShuffle();
+
             // 표정(GAME_START)과 시작 대사를 같은 타이밍에
             _ui.ShowOpponentReaction(CharacterExpressionType.GAME_START);
 
             var startHold = Random.Range(StartAnnounceHoldMin, StartAnnounceHoldMax);
-            await _ui.PlayStartAnnounceAsync("게임 시작", startHold);
+            await _ui.PlayStartAnnounceAsync("게임 시작", startHold, playPopupSound: true);
             if (this == null || _matchOver)
                 return;
 
@@ -196,12 +199,16 @@ namespace SHIN
             if (_dealerIsPlayer)
             {
                 PutChips(true, SmallBlind);
+                InGameSfx.PlayChipBet();
                 PutChips(false, BigBlind);
+                InGameSfx.PlayChipBet();
             }
             else
             {
                 PutChips(false, SmallBlind);
+                InGameSfx.PlayChipBet();
                 PutChips(true, BigBlind);
+                InGameSfx.PlayChipBet();
             }
 
             _currentBet = BigBlind;
@@ -544,16 +551,18 @@ namespace SHIN
         private async Task ShowdownAsync()
         {
             _street = PokerStreet.Showdown;
-            await RefreshTableAsync(true);
+            await RefreshTableAsync(true, showdownReveal: true);
             _ui?.RevealOpponentCards();
 
-            // 쇼다운 시작: 카드 공개 직후 전용 대사·표정 + ShowDownUI 연출
+            // 쇼다운: 카드 공개 → 반응 → 배너 + 족보 + 하이라이트
+            var board = _board.ToArray();
+            var playerHand = PokerHandEvaluator.EvaluateDetailed(_playerHole0, _playerHole1, board);
+            var opponentHand = PokerHandEvaluator.EvaluateDetailed(_opponentHole0, _opponentHole1, board);
+            var compare = playerHand.Score.CompareTo(opponentHand.Score);
+
             _ui?.ShowOpponentReaction(CharacterExpressionType.SHOWDOWN);
             if (_ui != null)
-            {
-                var hold = Random.Range(ShowdownReactDelayMin, ShowdownReactDelayMax);
-                await _ui.PlayShowDownAsync(hold);
-            }
+                await _ui.PlayShowdownRevealAsync(playerHand, opponentHand, compare);
             else
             {
                 var showdownDelayMs = Mathf.RoundToInt(
@@ -564,10 +573,6 @@ namespace SHIN
             if (this == null || _matchOver)
                 return;
 
-            var playerScore = PokerHandEvaluator.Evaluate(_playerHole0, _playerHole1, _board.ToArray());
-            var opponentScore = PokerHandEvaluator.Evaluate(_opponentHole0, _opponentHole1, _board.ToArray());
-            var compare = playerScore.CompareTo(opponentScore);
-
             if (compare > 0)
             {
                 _playerStack += _pot;
@@ -575,7 +580,7 @@ namespace SHIN
                 _ui?.ShowOpponentReaction(CharacterExpressionType.HAND_LOSE);
                 _pot = 0;
                 if (_ui != null)
-                    await _ui.PlayStartAnnounceAsync("승리", HandResultAnnounceHold);
+                    await _ui.PlayHandResultAnnounceAsync("승리", HandResultAnnounceHold);
             }
             else if (compare < 0)
             {
@@ -584,7 +589,7 @@ namespace SHIN
                 _ui?.ShowOpponentReaction(CharacterExpressionType.HAND_WIN);
                 _pot = 0;
                 if (_ui != null)
-                    await _ui.PlayStartAnnounceAsync("패배", HandResultAnnounceHold);
+                    await _ui.PlayHandResultAnnounceAsync("패배", HandResultAnnounceHold);
             }
             else
             {
@@ -594,9 +599,13 @@ namespace SHIN
                 RefreshHud();
                 _pot = 0;
                 if (_ui != null)
-                    await _ui.PlayStartAnnounceAsync("무승부", HandResultAnnounceHold);
+                    await _ui.PlayHandResultAnnounceAsync("무승부", HandResultAnnounceHold);
             }
 
+            if (this == null || _matchOver)
+                return;
+
+            await Task.Delay(Mathf.RoundToInt(ShowdownBeforeNextHandDelay * 1000f));
             if (this == null || _matchOver)
                 return;
 
@@ -628,7 +637,7 @@ namespace SHIN
                 return;
 
             if (_ui != null)
-                await _ui.PlayStartAnnounceAsync(playerWins ? "승리" : "패배", HandResultAnnounceHold);
+                await _ui.PlayHandResultAnnounceAsync(playerWins ? "승리" : "패배", HandResultAnnounceHold);
             if (this == null || _matchOver)
                 return;
 
@@ -638,7 +647,7 @@ namespace SHIN
         private async Task FinishHandAsync()
         {
             _handBusy = true;
-            await Task.Delay(400);
+            await Task.Delay(800);
             if (this == null)
                 return;
 
@@ -671,7 +680,7 @@ namespace SHIN
             }
         }
 
-        private async Task RefreshTableAsync(bool revealOpponent, bool resetCards = false)
+        private async Task RefreshTableAsync(bool revealOpponent, bool resetCards = false, bool showdownReveal = false)
         {
             if (_ui == null)
                 return;
@@ -681,7 +690,8 @@ namespace SHIN
                 new[] { _opponentHole0, _opponentHole1 },
                 _board,
                 revealOpponent,
-                resetCards);
+                resetCards,
+                showdownReveal);
             RefreshHud();
         }
 
@@ -708,8 +718,8 @@ namespace SHIN
             if (!_hasPlayerHoleCards)
                 return "내 패 · -";
 
-            var score = PokerHandEvaluator.Evaluate(_playerHole0, _playerHole1, _board.ToArray());
-            return $"내 패 · {score.DisplayName}";
+            var score = PokerHandEvaluator.EvaluateDetailed(_playerHole0, _playerHole1, _board.ToArray());
+            return $"내 패 · {score.SummaryText}";
         }
     }
 }

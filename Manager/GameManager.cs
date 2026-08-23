@@ -1,4 +1,4 @@
-using System;
+ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using UnityEngine;
@@ -199,7 +199,20 @@ namespace SHIN
                 PublicVariable.Address.AnnouncerShowdown,
                 PublicVariable.Address.AnnouncerWin,
                 PublicVariable.Address.AnnouncerLose,
-                PublicVariable.Address.InGameBgm
+                PublicVariable.Address.InGameBgm,
+                PublicVariable.Address.SeCardDraw,
+                PublicVariable.Address.SeCardFlip,
+                PublicVariable.Address.SeCardFlipShowdown,
+                PublicVariable.Address.SeCardShuffle,
+                PublicVariable.Address.SeChipBet,
+                PublicVariable.Address.SeChipUp,
+                PublicVariable.Address.SePotUp,
+                PublicVariable.Address.SeUiClick,
+                PublicVariable.Address.SeUiShowTurnPopup,
+                PublicVariable.Address.SeWin,
+                PublicVariable.Address.SeLose,
+                PublicVariable.Address.SeCharacterDialog,
+                PublicVariable.Address.SeHandWin
             };
             playerData?.CollectVoiceAddresses(addresses);
             opponentData?.CollectVoiceAddresses(addresses);

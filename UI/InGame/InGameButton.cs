@@ -38,7 +38,11 @@ namespace SHIN
             if (_button == null || onClick == null)
                 return;
 
-            _button.onClick.AddListener(() => onClick());
+            _button.onClick.AddListener(() =>
+            {
+                InGameSfx.PlayUiClick();
+                onClick();
+            });
         }
 
         public void RemoveAllClickListeners()

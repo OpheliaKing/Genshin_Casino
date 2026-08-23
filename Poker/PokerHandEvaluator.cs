@@ -29,6 +29,14 @@ namespace SHIN
 
         public int CompareTo(HandScore other) => Value.CompareTo(other.Value);
 
+        public int GetSortKey(int index)
+        {
+            if (index < 0 || index > 4)
+                return 0;
+
+            return (int)((Value >> (20 - index * 4)) & 0xF);
+        }
+
         public string DisplayName => Category switch
         {
             HandCategory.RoyalFlush => "로열 플러시",
@@ -44,13 +52,111 @@ namespace SHIN
         };
     }
 
+    public readonly struct HandEvaluation
+    {
+        public HandEvaluation(HandScore score, PokerCard[] bestFive)
+        {
+            Score = score;
+            BestFive = bestFive ?? Array.Empty<PokerCard>();
+        }
+
+        public HandScore Score { get; }
+        public PokerCard[] BestFive { get; }
+
+        public string SummaryText => HandSummaryFormatter.FormatSummary(this);
+
+        /// <summary>쇼다운 라벨 (족보 + 핵심 카드, 동점 족보 패배 시 키커 표기).</summary>
+        public string BuildShowdownLabel(HandEvaluation other, bool isWinner, bool isTie)
+        {
+            var text = SummaryText;
+            if (isTie || isWinner || other.Score.Category != Score.Category)
+                return text;
+
+            if (HandSummaryFormatter.TryGetLoserKickerLabel(Score, other.Score, out var kickerNote))
+                return text + kickerNote;
+
+            return text;
+        }
+    }
+
+    public static class HandSummaryFormatter
+    {
+        public static string FormatSummary(HandEvaluation evaluation)
+        {
+            var score = evaluation.Score;
+            switch (score.Category)
+            {
+                case HandCategory.RoyalFlush:
+                    return score.DisplayName;
+                case HandCategory.StraightFlush:
+                    return $"{score.DisplayName} (~{RankText(score.GetSortKey(0))})";
+                case HandCategory.FourOfAKind:
+                    return $"{score.DisplayName} ({RankText(score.GetSortKey(0))})";
+                case HandCategory.FullHouse:
+                    return $"{score.DisplayName} ({RankText(score.GetSortKey(0))} · {RankText(score.GetSortKey(1))})";
+                case HandCategory.Flush:
+                    return $"{score.DisplayName} ({RankText(score.GetSortKey(0))})";
+                case HandCategory.Straight:
+                    return $"{score.DisplayName} (~{RankText(score.GetSortKey(0))})";
+                case HandCategory.ThreeOfAKind:
+                    return $"{score.DisplayName} ({RankText(score.GetSortKey(0))})";
+                case HandCategory.TwoPair:
+                    return $"{score.DisplayName} ({RankText(score.GetSortKey(0))}-{RankText(score.GetSortKey(0))} · {RankText(score.GetSortKey(1))}-{RankText(score.GetSortKey(1))})";
+                case HandCategory.OnePair:
+                {
+                    var pair = RankText(score.GetSortKey(0));
+                    return $"{score.DisplayName} ({pair}-{pair})";
+                }
+                default:
+                    return $"{score.DisplayName} ({RankText(score.GetSortKey(0))})";
+            }
+        }
+
+        public static bool TryGetLoserKickerLabel(HandScore loser, HandScore winner, out string kickerNote)
+        {
+            kickerNote = string.Empty;
+            if (loser.Category != winner.Category || loser.Value >= winner.Value)
+                return false;
+
+            for (var i = 0; i < 5; i++)
+            {
+                var loserKey = loser.GetSortKey(i);
+                var winnerKey = winner.GetSortKey(i);
+                if (loserKey == winnerKey)
+                    continue;
+
+                kickerNote = $" · 키커 {RankText(loserKey)}";
+                return true;
+            }
+
+            return false;
+        }
+
+        private static string RankText(int rank) => rank switch
+        {
+            14 => "A",
+            13 => "K",
+            12 => "Q",
+            11 => "J",
+            10 => "10",
+            >= 2 and <= 9 => rank.ToString(),
+            _ => "?"
+        };
+    }
+
     public static class PokerHandEvaluator
     {
         public static HandScore Evaluate(PokerCard hole0, PokerCard hole1, PokerCard[] board)
+            => EvaluateDetailed(hole0, hole1, board).Score;
+
+        public static HandEvaluation EvaluateDetailed(PokerCard hole0, PokerCard hole1, PokerCard[] board)
         {
             board ??= Array.Empty<PokerCard>();
             if (board.Length == 0)
-                return EvaluateHoleOnly(hole0, hole1);
+            {
+                var holeScore = EvaluateHoleOnly(hole0, hole1);
+                return new HandEvaluation(holeScore, new[] { hole0, hole1 });
+            }
 
             var cards = new PokerCard[2 + board.Length];
             cards[0] = hole0;
@@ -59,9 +165,12 @@ namespace SHIN
                 cards[2 + i] = board[i];
 
             if (cards.Length < 5)
-                return EvaluateHoleOnly(hole0, hole1);
+            {
+                var holeScore = EvaluateHoleOnly(hole0, hole1);
+                return new HandEvaluation(holeScore, new[] { hole0, hole1 });
+            }
 
-            return EvaluateBestFive(cards);
+            return EvaluateBestFiveDetailed(cards);
         }
 
         /// <summary>프리플랍 등 보드가 없을 때 손패 2장만으로 등급을 본다.</summary>
@@ -78,11 +187,15 @@ namespace SHIN
         }
 
         public static HandScore EvaluateBestFive(PokerCard[] cards)
+            => EvaluateBestFiveDetailed(cards).Score;
+
+        public static HandEvaluation EvaluateBestFiveDetailed(PokerCard[] cards)
         {
             if (cards == null || cards.Length < 5)
-                return new HandScore(HandCategory.HighCard, 0);
+                return new HandEvaluation(new HandScore(HandCategory.HighCard, 0), Array.Empty<PokerCard>());
 
             var best = new HandScore(HandCategory.HighCard, -1);
+            PokerCard[] bestCombo = null;
             var n = cards.Length;
             var combo = new PokerCard[5];
 
@@ -99,10 +212,13 @@ namespace SHIN
                 combo[4] = cards[e];
                 var score = EvaluateFive(combo);
                 if (score.Value > best.Value)
+                {
                     best = score;
+                    bestCombo = (PokerCard[])combo.Clone();
+                }
             }
 
-            return best;
+            return new HandEvaluation(best, bestCombo ?? Array.Empty<PokerCard>());
         }
 
         private static HandScore EvaluateFive(PokerCard[] cards)

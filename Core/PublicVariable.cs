@@ -31,6 +31,20 @@ namespace SHIN
             public const string AnnouncerWin = "Assets/Addressables/Audio/Voice/Announcer/se_voice_announcer_win_001.mp3";
             public const string AnnouncerLose = "Assets/Addressables/Audio/Voice/Announcer/se_voice_announcer_lose_001.mp3";
             public const string InGameBgm = "Assets/Addressables/Audio/BGM/bgm_inGame_001.mp3";
+
+            public const string SeCardDraw = "Assets/Addressables/Audio/SE/InGame/se_card_draw_001.ogg";
+            public const string SeCardFlip = "Assets/Addressables/Audio/SE/InGame/se_card_flip_001.ogg";
+            public const string SeCardFlipShowdown = "Assets/Addressables/Audio/SE/InGame/se_card_flip_002.ogg";
+            public const string SeCardShuffle = "Assets/Addressables/Audio/SE/InGame/se_card_shuffle_001.ogg";
+            public const string SeChipBet = "Assets/Addressables/Audio/SE/InGame/se_chip_bet_001.ogg";
+            public const string SeChipUp = "Assets/Addressables/Audio/SE/InGame/se_chip_up_001.wav";
+            public const string SePotUp = "Assets/Addressables/Audio/SE/InGame/se_pot_up_001.ogg";
+            public const string SeUiClick = "Assets/Addressables/Audio/SE/se_ui_click_001.wav";
+            public const string SeUiShowTurnPopup = "Assets/Addressables/Audio/SE/se_ui_show_turn_popup_001.wav";
+            public const string SeWin = "Assets/Addressables/Audio/SE/InGame/se_win_001.wav";
+            public const string SeLose = "Assets/Addressables/Audio/SE/InGame/se_lose_001.wav";
+            public const string SeCharacterDialog = "Assets/Addressables/Audio/SE/InGame/se_chracter_dialog_001.mp3";
+            public const string SeHandWin = "Assets/Addressables/Audio/SE/InGame/se_hand_win_001.wav";
             public const string OpponentDataSO = "Assets/Addressables/SO/OpponentDataSO.asset";
             public const string CardItem = "Assets/Addressables/Prefab/UI/CardObject.prefab";
             public const string InGameUI = "Assets/Addressables/Prefab/UI/InGameUI.prefab";

@@ -36,6 +36,7 @@ namespace SHIN
 
             // 비활성 상태에서 ForceMeshUpdate하면 characterCount가 이전 대사 값으로 남을 수 있음.
             gameObject.SetActive(true);
+            InGameSfx.PlayCharacterDialog();
 
             if (_text == null)
                 return;
