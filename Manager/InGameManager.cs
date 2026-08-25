@@ -275,9 +275,9 @@ namespace SHIN
                     else
                         _opponentFolded = true;
                     _ui?.PlayBetFx(isPlayer, PokerAction.Fold, 0);
-                    if (isPlayer)
-                        _ui?.PlayPlayerVoice(CharacterExpressionType.ACTION_FOLD);
-                    else
+                    // if (isPlayer)
+                    //     _ui?.PlayPlayerVoice(CharacterExpressionType.ACTION_FOLD);
+                    if (!isPlayer)
                         await PlayOpponentActionReactionAsync(PokerAction.Fold);
                     if (this == null || _matchOver)
                         return;
@@ -321,8 +321,8 @@ namespace SHIN
             if (resolved != PokerAction.Check)
                 _ui?.PlayBetFx(isPlayer, resolved, paid);
 
-            if (isPlayer)
-                _ui?.PlayPlayerVoice(ExpressionForAction(resolved));
+            // if (isPlayer)
+            //     _ui?.PlayPlayerVoice(ExpressionForAction(resolved));
 
             RefreshHud();
 

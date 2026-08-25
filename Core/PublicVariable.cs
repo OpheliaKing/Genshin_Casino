@@ -52,6 +52,10 @@ namespace SHIN
             public const string OpponentSelectItem = "Assets/Addressables/Prefab/UI/OpponentSelectUI/OpponentSelectItem.prefab";
             public const string VersusUI = "Assets/Addressables/Prefab/UI/VersusUI.prefab";
             public const string FadeUI = "Assets/Addressables/Prefab/UI/FadeUI.prefab";
+            public const string StartUI = "Assets/Addressables/Prefab/UI/StartUI.prefab";
+            public const string MainUI = "Assets/Addressables/Prefab/UI/MainUI.prefab";
+            /// <summary>타이틀 BGM. 에셋 추가 후 GameManager._titleBgmAddress에 이 경로를 넣는다.</summary>
+            public const string TitleBgm = "Assets/Addressables/Audio/BGM/bgm_title_001.mp3";
         }
     }
 }

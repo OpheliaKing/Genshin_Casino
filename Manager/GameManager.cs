@@ -14,9 +14,13 @@ namespace SHIN
         [SerializeField] private UIManager _uiManager;
         [SerializeField] private InGameManager _inGameManager;
         [SerializeField] private SoundManager _soundManager;
+        /// <summary>타이틀 BGM Addressables 주소. 비어 있으면 재생하지 않는다.</summary>
+        [SerializeField] private string _titleBgmAddress = "";
 
         private PlayerData _playerData;
         private Task<PlayerData> _playerDataLoadTask;
+        private bool _bootStarted;
+        private bool _transitionToMainStarted;
 
         public ResourceManager ResourceManager
         {
@@ -95,12 +99,109 @@ namespace SHIN
 
         private void Start()
         {
-            TestShowOpponentSelectUI();
+            ApplyBootBlackout();
+            if (_bootStarted)
+                return;
+
+            _bootStarted = true;
+            _ = BootAsync();
         }
 
-        private void TestShowOpponentSelectUI()
+        /// <summary>
+        /// 첫 프레임 플래시를 줄이기 위해 카메라 클리어를 검정으로 맞춘다.
+        /// 씬에 검정 풀스크린 Image를 미리 깔아 두는 방식을 권장하며, 이와 병행한다.
+        /// </summary>
+        private void ApplyBootBlackout()
         {
-            UIManager.Show(PublicVariable.Address.OpponentSelectUI);
+            var cam = Camera.main;
+            if (cam == null)
+                return;
+
+            cam.clearFlags = CameraClearFlags.SolidColor;
+            cam.backgroundColor = Color.black;
+        }
+
+        private async Task BootAsync()
+        {
+            // 프리로드 동안 검정 유지 (FadeUI)
+            await UIManager.FadeToAsync(1f, 0f);
+            if (this == null)
+                return;
+
+            await PreloadBootResourcesAsync();
+            if (this == null)
+                return;
+
+            var startReady = new TaskCompletionSource<StartUI>();
+            UIManager.Show(PublicVariable.Address.StartUI, ui =>
+            {
+                startReady.TrySetResult(ui as StartUI);
+            });
+
+            var startUI = await startReady.Task;
+            if (this == null)
+                return;
+
+            TryPlayTitleBgm();
+
+            await UIManager.FadeInAsync();
+            if (this == null)
+                return;
+
+            startUI?.SetInputEnabled(true);
+        }
+
+        private async Task PreloadBootResourcesAsync()
+        {
+            var resourceManager = ResourceManager;
+            if (resourceManager == null)
+                return;
+
+            var tasks = new List<Task>
+            {
+                resourceManager.PreloadLabelAsync(PublicVariable.Label.Preload),
+                resourceManager.LoadAsync<GameObject>(PublicVariable.Address.StartUI),
+                resourceManager.LoadAsync<GameObject>(PublicVariable.Address.MainUI),
+                resourceManager.LoadAsync<GameObject>(PublicVariable.Address.FadeUI),
+                EnsurePlayerDataAsync()
+            };
+
+            if (!string.IsNullOrWhiteSpace(_titleBgmAddress))
+                tasks.Add(SoundManager.PreloadAsync(new[] { _titleBgmAddress.Trim() }));
+
+            await Task.WhenAll(tasks);
+        }
+
+        private void TryPlayTitleBgm()
+        {
+            if (string.IsNullOrWhiteSpace(_titleBgmAddress))
+                return;
+
+            SoundManager.PlayBgm(_titleBgmAddress.Trim());
+        }
+
+        /// <summary>StartUI에서 클릭/터치 시 MainUI로 전환한다.</summary>
+        public void GoToMainFromStart()
+        {
+            if (_transitionToMainStarted)
+                return;
+
+            _transitionToMainStarted = true;
+            _ = GoToMainFromStartAsync();
+        }
+
+        private async Task GoToMainFromStartAsync()
+        {
+            await UIManager.FadeTransitionAsync(async () =>
+            {
+                var current = UIManager.Current;
+                if (current != null)
+                    UIManager.Close(current, restoreVisibleStack: false);
+
+                var mainReady = new TaskCompletionSource<bool>();
+                UIManager.Show(PublicVariable.Address.MainUI, _ => mainReady.TrySetResult(true));
+                await mainReady.Task;
+            });
         }
 
         public void GameStart(OpponentData opponentData)
