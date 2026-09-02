@@ -1,13 +1,15 @@
 using System;
 using TMPro;
 using UnityEngine;
-using UnityEngine.UI;
 
 namespace SHIN
 {
+    /// <summary>
+    /// 인게임 액션 버튼. 클릭음은 ButtonBase가 담당한다.
+    /// </summary>
     public class InGameButton : MonoBehaviour
     {
-        [SerializeField] private Button _button;
+        [SerializeField] private ButtonBase _button;
         [SerializeField] private TextMeshProUGUI _label;
 
         public bool Interactable
@@ -38,11 +40,7 @@ namespace SHIN
             if (_button == null || onClick == null)
                 return;
 
-            _button.onClick.AddListener(() =>
-            {
-                InGameSfx.PlayUiClick();
-                onClick();
-            });
+            _button.onClick.AddListener(() => onClick());
         }
 
         public void RemoveAllClickListeners()
@@ -54,7 +52,7 @@ namespace SHIN
         private void EnsureRefs()
         {
             if (_button == null)
-                _button = GetComponent<Button>();
+                _button = GetComponent<ButtonBase>();
 
             if (_label == null)
                 _label = GetComponentInChildren<TextMeshProUGUI>(true);

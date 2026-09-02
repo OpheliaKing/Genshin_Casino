@@ -15,6 +15,7 @@ namespace SHIN
             public const string Portrait = "Portrait";
             public const string Data = "Data";
             public const string Audio = "Audio";
+            public const string OpponentSelect = "OpponentSelect";
         }
 
         public static class Address

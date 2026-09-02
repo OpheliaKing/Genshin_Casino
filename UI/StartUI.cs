@@ -10,12 +10,12 @@ namespace SHIN
     /// </summary>
     public class StartUI : UIBase
     {
-        private const string PromptText = "화면을 터치하세요";
+        private const string PromptText = "Touch to Start";
 
         [SerializeField] private TextMeshProUGUI _promptLabel;
         [SerializeField] private CanvasGroup _promptCanvasGroup;
         [SerializeField] private float _blinkDuration = 0.85f;
-        [SerializeField] private float _blinkMinAlpha = 0.25f;
+        [SerializeField] private float _blinkMinAlpha = 0.45f;
 
         private Tween _blinkTween;
         private bool _inputEnabled;
@@ -95,6 +95,27 @@ namespace SHIN
 
             _promptLabel.text = PromptText;
             _promptLabel.raycastTarget = false;
+            // Cinzel Decorative는 이미 Bold 계열
+            _promptLabel.fontStyle = FontStyles.Normal;
+            // 타이틀 키아트(밝은 금색) 대비용 크림 톤
+            _promptLabel.color = new Color(1f, 0.96f, 0.82f, 1f);
+
+            // 외곽선 + 언더레이로 배경과 분리
+            var mat = _promptLabel.fontMaterial;
+            if (mat == null)
+                return;
+
+            mat.EnableKeyword("OUTLINE_ON");
+            mat.SetFloat(ShaderUtilities.ID_OutlineWidth, 0.22f);
+            mat.SetFloat(ShaderUtilities.ID_OutlineSoftness, 0f);
+            mat.SetColor(ShaderUtilities.ID_OutlineColor, new Color(0.12f, 0.06f, 0.02f, 1f));
+
+            mat.EnableKeyword("UNDERLAY_ON");
+            mat.SetFloat(ShaderUtilities.ID_UnderlayOffsetX, 0.6f);
+            mat.SetFloat(ShaderUtilities.ID_UnderlayOffsetY, -0.6f);
+            mat.SetFloat(ShaderUtilities.ID_UnderlayDilate, 0.15f);
+            mat.SetFloat(ShaderUtilities.ID_UnderlaySoftness, 0.2f);
+            mat.SetColor(ShaderUtilities.ID_UnderlayColor, new Color(0f, 0f, 0f, 0.75f));
         }
 
         private void StartBlink()

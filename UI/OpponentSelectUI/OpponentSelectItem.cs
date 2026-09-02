@@ -12,7 +12,7 @@ namespace SHIN
         private Image _opponentImage;
 
         [SerializeField]
-        private Button _button;
+        private ButtonBase _button;
 
         private OpponentData _data;
         private Action<OpponentData> _onClicked;
@@ -20,19 +20,19 @@ namespace SHIN
         private void Awake()
         {
             if (_button == null)
-                _button = GetComponent<Button>();
+                _button = GetComponent<ButtonBase>();
 
             if (_button == null)
-                _button = gameObject.AddComponent<Button>();
+                _button = gameObject.AddComponent<ButtonBase>();
 
             _button.onClick.AddListener(OnClick);
         }
 
-        public void Bind(OpponentData data, Action<OpponentData> onClicked)
+        public Task BindAsync(OpponentData data, Action<OpponentData> onClicked)
         {
             _data = data;
             _onClicked = onClicked;
-            _ = ApplySpriteAsync(data);
+            return ApplySpriteAsync(data);
         }
 
         private async Task ApplySpriteAsync(OpponentData data)
