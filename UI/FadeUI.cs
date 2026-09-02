@@ -14,7 +14,7 @@ namespace SHIN
 
         [SerializeField] private CanvasGroup _canvasGroup;
         [SerializeField] private Image _image;
-        [SerializeField] private float _defaultDuration = 0.4f;
+        [SerializeField] private float _defaultDuration = 1f;
 
         private Canvas _overlayCanvas;
         private Tween _tween;

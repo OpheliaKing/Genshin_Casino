@@ -46,6 +46,8 @@ namespace SHIN
             public const string SeLose = "Assets/Addressables/Audio/SE/InGame/se_lose_001.wav";
             public const string SeCharacterDialog = "Assets/Addressables/Audio/SE/InGame/se_chracter_dialog_001.mp3";
             public const string SeHandWin = "Assets/Addressables/Audio/SE/InGame/se_hand_win_001.wav";
+            public const string SeVersusStart = "Assets/Addressables/Audio/SE/Versus/se_versus_001.mp3";
+            public const string SeVersusClash = "Assets/Addressables/Audio/SE/Versus/se_versus_002.wav";
             public const string OpponentDataSO = "Assets/Addressables/SO/OpponentDataSO.asset";
             public const string CardItem = "Assets/Addressables/Prefab/UI/CardObject.prefab";
             public const string InGameUI = "Assets/Addressables/Prefab/UI/InGameUI.prefab";

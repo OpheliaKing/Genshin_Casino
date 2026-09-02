@@ -313,7 +313,9 @@ namespace SHIN
                 PublicVariable.Address.SeWin,
                 PublicVariable.Address.SeLose,
                 PublicVariable.Address.SeCharacterDialog,
-                PublicVariable.Address.SeHandWin
+                PublicVariable.Address.SeHandWin,
+                PublicVariable.Address.SeVersusStart,
+                PublicVariable.Address.SeVersusClash
             };
             playerData?.CollectVoiceAddresses(addresses);
             opponentData?.CollectVoiceAddresses(addresses);

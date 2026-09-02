@@ -50,6 +50,11 @@ namespace SHIN
             EnsureReferences();
         }
 
+        public override void OnShow()
+        {
+            GameManager.Instance?.SoundManager?.StopBgm();
+        }
+
         public void Begin(OpponentData opponentData, Action onComplete)
         {
             if (_playing)
@@ -87,6 +92,9 @@ namespace SHIN
 
             PrepareIntroPose();
 
+            var soundManager = GameManager.Instance?.SoundManager;
+            soundManager?.PlaySe(PublicVariable.Address.SeVersusStart);
+
             _introSequence = DOTween.Sequence().SetUpdate(true);
 
             // 1) 양측이 중앙으로 박치기
@@ -106,6 +114,12 @@ namespace SHIN
                 else
                     _introSequence.Append(opponentClash);
             }
+
+            // 충돌 순간 SE
+            _introSequence.InsertCallback(_rushDuration, () =>
+            {
+                GameManager.Instance?.SoundManager?.PlaySe(PublicVariable.Address.SeVersusClash);
+            });
 
             // 2) 프리팹 배치 위치로 복귀
             if (_player != null)
