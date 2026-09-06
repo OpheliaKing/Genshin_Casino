@@ -7,7 +7,7 @@ namespace SHIN
     /// <summary>
     /// 프리플랍→플랍→턴→리버 진행도 HUD. 라벨은 프리팹에 배치하고 여기서 상태만 갱신한다.
     /// </summary>
-    public class StreetProgressUI : MonoBehaviour
+    public class PokerStreetProgressUI : MonoBehaviour
     {
         private static readonly string[] StepHints =
         {

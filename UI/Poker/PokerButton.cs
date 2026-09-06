@@ -7,7 +7,7 @@ namespace SHIN
     /// <summary>
     /// 인게임 액션 버튼. 클릭음은 ButtonBase가 담당한다.
     /// </summary>
-    public class InGameButton : MonoBehaviour
+    public class PokerButton : MonoBehaviour
     {
         [SerializeField] private ButtonBase _button;
         [SerializeField] private TextMeshProUGUI _label;

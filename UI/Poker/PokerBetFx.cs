@@ -8,7 +8,7 @@ namespace SHIN
     /// <summary>
     /// 콜/벳/레이즈 시 칩 비행 + 액션 콜아웃 + 팟 펀치.
     /// </summary>
-    public class InGameBetFx : MonoBehaviour
+    public class PokerBetFx : MonoBehaviour
     {
         [SerializeField] private RectTransform _fxRoot;
         [SerializeField] private RectTransform _potTarget;
@@ -35,12 +35,12 @@ namespace SHIN
                 PlayCallout(label, Intensity(action));
 
             if (chipsPaid > 0 && action != PokerAction.Check && action != PokerAction.Fold)
-                InGameSfx.PlayChipBet();
+                PokerSfx.PlayChipBet();
 
             if (chipsPaid <= 0 || from == null || action == PokerAction.Check || action == PokerAction.Fold)
                 return;
 
-            InGameSfx.PlayChipUp();
+            PokerSfx.PlayChipUp();
 
             var count = ChipCount(action, chipsPaid);
             FlyChips(from, count, Intensity(action));

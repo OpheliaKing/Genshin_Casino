@@ -10,7 +10,7 @@ namespace SHIN
     /// 쇼다운 족보 패널 연출.
     /// 플레이어 공개 → 상대 공개 → 승리 쪽 강조.
     /// </summary>
-    public class ShowdownHandUI : MonoBehaviour
+    public class PokerShowdownHandUI : MonoBehaviour
     {
         // StackUI 골드 텍스트와 맞춤
         private static readonly Color RankTextColor = new(0.96f, 0.78f, 0.28f, 1f);
@@ -63,7 +63,7 @@ namespace SHIN
             if (_playerPanel == null || _opponentPanel == null ||
                 _playerLabel == null || _opponentLabel == null)
             {
-                Debug.LogWarning("[ShowdownHandUI] PlayerHandPanel / OppHandPanel 연결이 필요합니다.");
+                Debug.LogWarning("[PokerShowdownHandUI] PlayerHandPanel / OppHandPanel 연결이 필요합니다.");
                 return;
             }
 
@@ -113,7 +113,7 @@ namespace SHIN
             group.blocksRaycasts = false;
             group.interactable = false;
 
-            InGameSfx.PlayCardFlipShowdown();
+            PokerSfx.PlayCardFlipShowdown();
 
             var tcs = new TaskCompletionSource<bool>();
             panel.DOKill();
@@ -162,9 +162,9 @@ namespace SHIN
                 loseLabel.color = LoserTextColor;
 
             if (playerWins)
-                InGameSfx.PlayWin();
+                PokerSfx.PlayWin();
             else
-                InGameSfx.PlayLose();
+                PokerSfx.PlayLose();
 
             if (winPanel == null)
                 return;

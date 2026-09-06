@@ -1,7 +1,7 @@
 namespace SHIN
 {
     /// <summary>인게임 공통 SE 재생.</summary>
-    public static class InGameSfx
+    public static class PokerSfx
     {
         public static void PlayCardDraw() => Play(PublicVariable.Address.SeCardDraw);
         public static void PlayCardFlip() => Play(PublicVariable.Address.SeCardFlip);

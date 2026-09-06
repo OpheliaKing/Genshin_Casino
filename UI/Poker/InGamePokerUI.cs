@@ -6,7 +6,7 @@ using UnityEngine;
 
 namespace SHIN
 {
-    public class InGameUI : UIBase
+    public class InGamePokerUI : UIBase
     {
         [SerializeField] private Transform _opponentCharacterParent;
         [SerializeField] private Transform[] _playerCardSlots;
@@ -14,27 +14,27 @@ namespace SHIN
         [SerializeField] private Transform[] _communityCardSlots;
         [SerializeField] private TextMeshProUGUI _statusText;
         [SerializeField] private TextMeshProUGUI _potText;
-        [SerializeField] private InGameStackUI _playerStackUI;
-        [SerializeField] private InGameStackUI _opponentStackUI;
-        [SerializeField] private InGameButton _foldButton;
-        [SerializeField] private InGameButton _callButton;
-        [SerializeField] private InGameButton _raiseButton;
-        [SerializeField] private InGameAnnouncePanel _startPanel;
-        [SerializeField] private InGameAnnouncePanel _turnPanel;
-        [SerializeField] private DialogUI _dialogUI;
-        [SerializeField] private GameResultUI _gameResultUI;
-        [SerializeField] private ShowDownUI _showDownUI;
-        [SerializeField] private ShowdownHandUI _showdownHandUI;
-        [SerializeField] private StreetProgressUI _streetProgressUI;
-        [SerializeField] private InGameBetFx _betFx;
+        [SerializeField] private PokerStackUI _playerStackUI;
+        [SerializeField] private PokerStackUI _opponentStackUI;
+        [SerializeField] private PokerButton _foldButton;
+        [SerializeField] private PokerButton _callButton;
+        [SerializeField] private PokerButton _raiseButton;
+        [SerializeField] private PokerAnnouncePanel _startPanel;
+        [SerializeField] private PokerAnnouncePanel _turnPanel;
+        [SerializeField] private PokerDialogUI _dialogUI;
+        [SerializeField] private PokerGameResultUI _gameResultUI;
+        [SerializeField] private PokerShowDownUI _showDownUI;
+        [SerializeField] private PokerShowdownHandUI _showdownHandUI;
+        [SerializeField] private PokerStreetProgressUI _streetProgressUI;
+        [SerializeField] private PokerBetFx _betFx;
 
         private GameObject _opponentModel;
         private CharacterFaceController _opponentFace;
         private readonly List<GameObject> _spawnedCards = new();
-        private readonly List<CardObject> _playerCards = new();
-        private readonly List<CardObject> _opponentCards = new();
-        private readonly List<CardObject> _communityCards = new();
-        private InGameManager _match;
+        private readonly List<PokerCardObject> _playerCards = new();
+        private readonly List<PokerCardObject> _opponentCards = new();
+        private readonly List<PokerCardObject> _communityCards = new();
+        private PokerMatchManager _match;
         private OpponentData _opponentData;
         private int _displayedPot;
         private bool _hasDisplayedPot;
@@ -47,6 +47,193 @@ namespace SHIN
         private const int ShowdownWinnerRevealDelayMs = 1500;
         private const int ShowdownHandHoldMs = 2200;
 
+        private static bool _gameStartRunning;
+
+        /// <summary>상대 선택 후 포커 매치 진입 (Versus → Poker UI).</summary>
+        public static void GameStart(OpponentData opponentData)
+        {
+            if (opponentData == null)
+            {
+                Debug.LogError("[InGamePokerUI] GameStart opponentData가 없습니다.");
+                return;
+            }
+
+            if (_gameStartRunning)
+                return;
+
+            _gameStartRunning = true;
+            _ = GameStartAsync(opponentData);
+        }
+
+        private static async Task GameStartAsync(OpponentData opponentData)
+        {
+            try
+            {
+                var gameManager = GameManager.Instance;
+                var uiManager = gameManager?.UIManager;
+                if (gameManager == null || uiManager == null)
+                    return;
+
+                await gameManager.EnsurePlayerDataAsync();
+                if (gameManager == null)
+                    return;
+
+                var preloadTask = PreloadMatchResourcesAsync(opponentData);
+
+                var versusReady = new TaskCompletionSource<VersusUI>();
+                uiManager.Show(PublicVariable.Address.VersusUI, ui =>
+                {
+                    versusReady.TrySetResult(ui as VersusUI);
+                });
+
+                var versusUI = await versusReady.Task;
+                if (gameManager == null)
+                    return;
+
+                PokerMatchManager match = null;
+
+                if (versusUI == null)
+                {
+                    Debug.LogError("[InGamePokerUI] VersusUI를 찾지 못했습니다.");
+                    await preloadTask;
+                    if (gameManager == null)
+                        return;
+
+                    await uiManager.FadeTransitionAsync(async () =>
+                    {
+                        match = await ShowAndSetupMatchAsync(uiManager, opponentData);
+                    });
+                    if (match != null)
+                        await match.BeginGameplayAsync();
+                    return;
+                }
+
+                var introDone = new TaskCompletionSource<bool>();
+                versusUI.Begin(opponentData, () => introDone.TrySetResult(true));
+
+                await introDone.Task;
+                if (gameManager == null)
+                    return;
+
+                await preloadTask;
+                if (gameManager == null)
+                    return;
+
+                var versusToClose = versusUI;
+                await uiManager.FadeTransitionAsync(async () =>
+                {
+                    uiManager.Close(versusToClose, restoreVisibleStack: false);
+                    match = await ShowAndSetupMatchAsync(uiManager, opponentData);
+                });
+
+                if (match != null)
+                    await match.BeginGameplayAsync();
+            }
+            finally
+            {
+                _gameStartRunning = false;
+            }
+        }
+
+        private static async Task<PokerMatchManager> ShowAndSetupMatchAsync(UIManager uiManager, OpponentData opponentData)
+        {
+            var shown = new TaskCompletionSource<InGamePokerUI>();
+            uiManager.Show(PublicVariable.Address.InGamePokerUI, ui =>
+            {
+                shown.TrySetResult(ui as InGamePokerUI);
+            });
+
+            var pokerUI = await shown.Task;
+            if (pokerUI == null)
+            {
+                Debug.LogError("[InGamePokerUI] InGamePokerUI Show에 실패했습니다.");
+                return null;
+            }
+
+            var match = pokerUI.GetComponent<PokerMatchManager>();
+            if (match == null)
+                match = pokerUI.gameObject.AddComponent<PokerMatchManager>();
+
+            await match.SetupMatchAsync(pokerUI, opponentData);
+            return match;
+        }
+
+        private static async Task PreloadMatchResourcesAsync(OpponentData opponentData)
+        {
+            var gameManager = GameManager.Instance;
+            if (gameManager == null)
+                return;
+
+            var playerData = await gameManager.EnsurePlayerDataAsync();
+            if (gameManager == null)
+                return;
+
+            var uiPreload = gameManager.UIManager.PreloadPokerUIAsync();
+            var opponentPreload = PreloadOpponentAsync(opponentData);
+            var voicePreload = PreloadMatchVoicesAsync(playerData, opponentData);
+            await Task.WhenAll(uiPreload, opponentPreload, voicePreload);
+        }
+
+        private static async Task PreloadMatchVoicesAsync(PlayerData playerData, OpponentData opponentData)
+        {
+            var soundManager = GameManager.Instance?.SoundManager;
+            if (soundManager == null)
+                return;
+
+            var addresses = new List<string>
+            {
+                PublicVariable.Address.AnnouncerShowdown,
+                PublicVariable.Address.AnnouncerWin,
+                PublicVariable.Address.AnnouncerLose,
+                PublicVariable.Address.InGameBgm,
+                PublicVariable.Address.SeCardDraw,
+                PublicVariable.Address.SeCardFlip,
+                PublicVariable.Address.SeCardFlipShowdown,
+                PublicVariable.Address.SeCardShuffle,
+                PublicVariable.Address.SeChipBet,
+                PublicVariable.Address.SeChipUp,
+                PublicVariable.Address.SePotUp,
+                PublicVariable.Address.SeUiClick,
+                PublicVariable.Address.SeUiShowTurnPopup,
+                PublicVariable.Address.SeWin,
+                PublicVariable.Address.SeLose,
+                PublicVariable.Address.SeCharacterDialog,
+                PublicVariable.Address.SeHandWin,
+                PublicVariable.Address.SeVersusStart,
+                PublicVariable.Address.SeVersusClash
+            };
+            playerData?.CollectVoiceAddresses(addresses);
+            opponentData?.CollectVoiceAddresses(addresses);
+
+            await soundManager.PreloadAsync(addresses);
+        }
+
+        private static async Task PreloadOpponentAsync(OpponentData opponentData)
+        {
+            if (opponentData == null)
+                return;
+
+            var resourceManager = GameManager.Instance?.ResourceManager;
+            if (resourceManager == null)
+                return;
+
+            var tasks = new List<Task>();
+
+            if (!string.IsNullOrEmpty(opponentData.modelPath))
+                tasks.Add(resourceManager.LoadAsync<GameObject>(opponentData.modelPath));
+
+            var atlasAddress = !string.IsNullOrEmpty(opponentData.atlasAddress)
+                ? opponentData.atlasAddress
+                : PublicVariable.Address.CharacterAtlas;
+            if (!string.IsNullOrEmpty(atlasAddress))
+                tasks.Add(resourceManager.LoadAsync<UnityEngine.U2D.SpriteAtlas>(atlasAddress));
+
+            if (tasks.Count == 0)
+                return;
+
+            await Task.WhenAll(tasks);
+        }
+
         public async Task SetupAsync(OpponentData opponentData)
         {
             _opponentData = opponentData;
@@ -56,14 +243,14 @@ namespace SHIN
             _showDownUI?.HideImmediate();
             _showdownHandUI?.HideImmediate();
             ClearShowdownVisuals();
-            EnsureStreetProgressUI();
+            EnsurePokerStreetProgressUI();
             _streetProgressUI?.ResetToPreflop();
             HideExistingCardsInSlots(_playerCardSlots);
             HideExistingCardsInSlots(_opponentCardSlots);
 
             if (opponentData == null || _opponentCharacterParent == null || string.IsNullOrEmpty(opponentData.modelPath))
             {
-                Debug.LogError("[InGameUI] 상대 모델 정보가 없습니다.");
+                Debug.LogError("[InGamePokerUI] 상대 모델 정보가 없습니다.");
                 return;
             }
 
@@ -120,7 +307,7 @@ namespace SHIN
             _opponentFace.Bind(opponentData);
         }
 
-        public void BindMatch(InGameManager match)
+        public void BindMatch(PokerMatchManager match)
         {
             _match = match;
             if (_foldButton != null)
@@ -209,12 +396,12 @@ namespace SHIN
             EnsureAnnouncePanels();
             if (_startPanel == null)
             {
-                Debug.LogWarning("[InGameUI] StartPanel가 연결되지 않았습니다.");
+                Debug.LogWarning("[InGamePokerUI] StartPanel가 연결되지 않았습니다.");
                 return Task.CompletedTask;
             }
 
             if (playPopupSound)
-                InGameSfx.PlayUiShowTurnPopup();
+                PokerSfx.PlayUiShowTurnPopup();
 
             return _startPanel.PlayAsync(text, holdSeconds);
         }
@@ -224,11 +411,11 @@ namespace SHIN
             EnsureAnnouncePanels();
             if (_startPanel == null)
             {
-                Debug.LogWarning("[InGameUI] StartPanel가 연결되지 않았습니다.");
+                Debug.LogWarning("[InGamePokerUI] StartPanel가 연결되지 않았습니다.");
                 return Task.CompletedTask;
             }
 
-            InGameSfx.PlayHandWin();
+            PokerSfx.PlayHandWin();
             return _startPanel.PlayAsync(text, holdSeconds);
         }
 
@@ -237,11 +424,11 @@ namespace SHIN
             EnsureAnnouncePanels();
             if (_turnPanel == null)
             {
-                Debug.LogWarning("[InGameUI] TurnPanel이 연결되지 않았습니다.");
+                Debug.LogWarning("[InGamePokerUI] TurnPanel이 연결되지 않았습니다.");
                 return Task.CompletedTask;
             }
 
-            InGameSfx.PlayUiShowTurnPopup();
+            PokerSfx.PlayUiShowTurnPopup();
             return _turnPanel.PlayAsync(text, holdSeconds);
         }
 
@@ -259,16 +446,16 @@ namespace SHIN
 
         public void SetStreetProgress(PokerStreet street, bool animate = true)
         {
-            EnsureStreetProgressUI();
+            EnsurePokerStreetProgressUI();
             _streetProgressUI?.SetStreet(street, animate);
         }
 
         public Task PlayGameResultAsync(bool playerWins, float holdSeconds = 1.35f)
         {
-            EnsureGameResultUI();
+            EnsurePokerGameResultUI();
             if (_gameResultUI == null)
             {
-                Debug.LogWarning("[InGameUI] GameResultUI가 연결되지 않았습니다.");
+                Debug.LogWarning("[InGamePokerUI] PokerGameResultUI가 연결되지 않았습니다.");
                 return Task.CompletedTask;
             }
 
@@ -277,10 +464,10 @@ namespace SHIN
 
         public Task PlayShowDownAsync(float holdSeconds = 1.8f)
         {
-            EnsureShowDownUI();
+            EnsurePokerShowDownUI();
             if (_showDownUI == null)
             {
-                Debug.LogWarning("[InGameUI] ShowDownUI가 연결되지 않았습니다.");
+                Debug.LogWarning("[InGamePokerUI] PokerShowDownUI가 연결되지 않았습니다.");
                 return Task.CompletedTask;
             }
 
@@ -295,8 +482,8 @@ namespace SHIN
             HandEvaluation opponentHand,
             int compare)
         {
-            EnsureShowDownUI();
-            EnsureShowdownHandUI();
+            EnsurePokerShowDownUI();
+            EnsurePokerShowdownHandUI();
             ClearShowdownVisuals();
 
             await PlayShowDownAsync(ShowdownBannerHold);
@@ -382,7 +569,7 @@ namespace SHIN
             var soundManager = GameManager.Instance?.SoundManager;
             if (soundManager == null)
             {
-                Debug.LogWarning("[InGameUI] SoundManager가 없습니다.");
+                Debug.LogWarning("[InGamePokerUI] SoundManager가 없습니다.");
                 return;
             }
 
@@ -391,10 +578,10 @@ namespace SHIN
 
         public void ShowDialog(string message, string voiceAddress = null)
         {
-            EnsureDialogUI();
+            EnsurePokerDialogUI();
             if (_dialogUI == null)
             {
-                Debug.LogWarning("[InGameUI] DialogUI가 연결되지 않았습니다.");
+                Debug.LogWarning("[InGamePokerUI] PokerDialogUI가 연결되지 않았습니다.");
                 return;
             }
 
@@ -403,7 +590,7 @@ namespace SHIN
 
         public void HideDialog()
         {
-            EnsureDialogUI();
+            EnsurePokerDialogUI();
             _dialogUI?.Hide();
         }
 
@@ -411,85 +598,85 @@ namespace SHIN
         {
             if (_startPanel == null)
             {
-                var start = transform.Find("InGameStartPanel");
+                var start = transform.Find("PokerStartPanel") ?? transform.Find("InGameStartPanel");
                 if (start != null)
-                    _startPanel = start.GetComponent<InGameAnnouncePanel>();
+                    _startPanel = start.GetComponent<PokerAnnouncePanel>();
             }
 
             if (_turnPanel == null)
             {
-                var turn = transform.Find("TurnPanel");
+                var turn = transform.Find("PokerTurnPanel") ?? transform.Find("TurnPanel");
                 if (turn != null)
-                    _turnPanel = turn.GetComponent<InGameAnnouncePanel>();
+                    _turnPanel = turn.GetComponent<PokerAnnouncePanel>();
             }
         }
 
-        private void EnsureDialogUI()
+        private void EnsurePokerDialogUI()
         {
             if (_dialogUI != null)
                 return;
 
-            var found = GetComponentInChildren<DialogUI>(true);
+            var found = GetComponentInChildren<PokerDialogUI>(true);
             if (found != null)
             {
                 _dialogUI = found;
                 return;
             }
 
-            var t = transform.Find("DialogUI");
+            var t = transform.Find("PokerDialogUI");
             if (t != null)
-                _dialogUI = t.GetComponent<DialogUI>() ?? t.gameObject.AddComponent<DialogUI>();
+                _dialogUI = t.GetComponent<PokerDialogUI>() ?? t.gameObject.AddComponent<PokerDialogUI>();
         }
 
-        private void EnsureGameResultUI()
+        private void EnsurePokerGameResultUI()
         {
             if (_gameResultUI != null)
                 return;
 
-            var found = GetComponentInChildren<GameResultUI>(true);
+            var found = GetComponentInChildren<PokerGameResultUI>(true);
             if (found != null)
             {
                 _gameResultUI = found;
                 return;
             }
 
-            var t = transform.Find("GameResultUI");
+            var t = transform.Find("PokerGameResultUI");
             if (t != null)
-                _gameResultUI = t.GetComponent<GameResultUI>() ?? t.gameObject.AddComponent<GameResultUI>();
+                _gameResultUI = t.GetComponent<PokerGameResultUI>() ?? t.gameObject.AddComponent<PokerGameResultUI>();
         }
 
-        private void EnsureShowDownUI()
+        private void EnsurePokerShowDownUI()
         {
             if (_showDownUI != null)
                 return;
 
-            var found = GetComponentInChildren<ShowDownUI>(true);
+            var found = GetComponentInChildren<PokerShowDownUI>(true);
             if (found != null)
             {
                 _showDownUI = found;
                 return;
             }
 
-            var t = transform.Find("ShowDownUI");
+            var t = transform.Find("PokerShowDownUI");
             if (t != null)
-                _showDownUI = t.GetComponent<ShowDownUI>() ?? t.gameObject.AddComponent<ShowDownUI>();
+                _showDownUI = t.GetComponent<PokerShowDownUI>() ?? t.gameObject.AddComponent<PokerShowDownUI>();
         }
 
-        private void EnsureShowdownHandUI()
+        private void EnsurePokerShowdownHandUI()
         {
             if (_showdownHandUI != null)
                 return;
 
-            _showdownHandUI = GetComponentInChildren<ShowdownHandUI>(true);
+            _showdownHandUI = GetComponentInChildren<PokerShowdownHandUI>(true);
             if (_showdownHandUI != null)
                 return;
 
-            var t = transform.Find("ShowdownHandUI");
+            var t = transform.Find("PokerShowdownHandUI");
             if (t != null)
-                _showdownHandUI = t.GetComponent<ShowdownHandUI>();
+                _showdownHandUI = t.GetComponent<PokerShowdownHandUI>();
 
             if (_showdownHandUI == null)
-                Debug.LogWarning("[InGameUI] ShowdownHandUI가 프리팹에 연결되어 있지 않습니다.");
+                Debug.LogWarning("[InGamePokerUI] PokerShowdownHandUI가 프리팹에 연결되어 있지 않습니다.");
         }
 
         private void ClearShowdownVisuals()
@@ -499,7 +686,7 @@ namespace SHIN
             ResetShowdownCards(_communityCards);
         }
 
-        private static void ResetShowdownCards(List<CardObject> cards)
+        private static void ResetShowdownCards(List<PokerCardObject> cards)
         {
             for (var i = 0; i < cards.Count; i++)
                 cards[i]?.ResetShowdownVisual();
@@ -584,7 +771,7 @@ namespace SHIN
         }
 
         private static void HighlightCardList(
-            List<CardObject> cards,
+            List<PokerCardObject> cards,
             HashSet<(CardRank rank, CardSuit suit)> contributingKeys,
             bool winnerSide)
         {
@@ -601,7 +788,7 @@ namespace SHIN
         }
 
         private static void PulseCardList(
-            List<CardObject> cards,
+            List<PokerCardObject> cards,
             HashSet<(CardRank rank, CardSuit suit)> winnerKeys,
             bool sideIsWinner)
         {
@@ -620,16 +807,16 @@ namespace SHIN
             }
         }
 
-        private void EnsureStreetProgressUI()
+        private void EnsurePokerStreetProgressUI()
         {
             if (_streetProgressUI != null)
                 return;
 
-            _streetProgressUI = GetComponentInChildren<StreetProgressUI>(true);
+            _streetProgressUI = GetComponentInChildren<PokerStreetProgressUI>(true);
             if (_streetProgressUI != null)
                 return;
 
-            Debug.LogWarning("[InGameUI] StreetProgressUI가 프리팹에 연결되어 있지 않습니다.");
+            Debug.LogWarning("[InGamePokerUI] PokerStreetProgressUI가 프리팹에 연결되어 있지 않습니다.");
         }
 
         private void EnsureBetFx()
@@ -637,11 +824,11 @@ namespace SHIN
             if (_betFx != null)
                 return;
 
-            _betFx = GetComponentInChildren<InGameBetFx>(true);
+            _betFx = GetComponentInChildren<PokerBetFx>(true);
             if (_betFx != null)
                 return;
 
-            _betFx = gameObject.AddComponent<InGameBetFx>();
+            _betFx = gameObject.AddComponent<PokerBetFx>();
         }
 
         public void RefreshHud(string status, int pot, int playerStack, int opponentStack, bool playerTurn, int toCall, bool matchOver, int currentBet = 0)
@@ -679,7 +866,7 @@ namespace SHIN
         private async Task EnsureHoleCardsAsync(
             IReadOnlyList<PokerCard> cards,
             Transform[] slots,
-            List<CardObject> bucket,
+            List<PokerCardObject> bucket,
             bool faceUp,
             bool playDrawSound = false)
         {
@@ -711,7 +898,7 @@ namespace SHIN
                 var slot = _communityCardSlots[i];
                 if (slot == null)
                 {
-                    Debug.LogError($"[InGameUI] 커뮤니티 카드 슬롯 {i}이 비어 있습니다.");
+                    Debug.LogError($"[InGamePokerUI] 커뮤니티 카드 슬롯 {i}이 비어 있습니다.");
                     continue;
                 }
 
@@ -733,15 +920,15 @@ namespace SHIN
                 FitToSlot(instance.transform);
                 _spawnedCards.Add(instance);
 
-                var cardObject = instance.GetComponent<CardObject>();
+                var cardObject = instance.GetComponent<PokerCardObject>();
                 if (cardObject == null)
-                    cardObject = instance.AddComponent<CardObject>();
+                    cardObject = instance.AddComponent<PokerCardObject>();
 
                 await cardObject.BindAsync(board[i], true);
                 if (this == null)
                     return;
 
-                InGameSfx.PlayCardFlip();
+                PokerSfx.PlayCardFlip();
                 if (i < targetCount - 1)
                 {
                     await Task.Delay(100);
@@ -756,7 +943,7 @@ namespace SHIN
         private async Task SpawnCardsAsync(
             IReadOnlyList<PokerCard> cards,
             Transform[] slots,
-            List<CardObject> bucket,
+            List<PokerCardObject> bucket,
             bool faceUp,
             bool playDrawSound = false)
         {
@@ -774,7 +961,7 @@ namespace SHIN
                 var slot = slots[i];
                 if (slot == null)
                 {
-                    Debug.LogError($"[InGameUI] 카드 슬롯 {i}이 비어 있습니다.");
+                    Debug.LogError($"[InGamePokerUI] 카드 슬롯 {i}이 비어 있습니다.");
                     continue;
                 }
 
@@ -799,9 +986,9 @@ namespace SHIN
                     slot.SetAsLastSibling();
                 _spawnedCards.Add(instance);
 
-                var cardObject = instance.GetComponent<CardObject>();
+                var cardObject = instance.GetComponent<PokerCardObject>();
                 if (cardObject == null)
-                    cardObject = instance.AddComponent<CardObject>();
+                    cardObject = instance.AddComponent<PokerCardObject>();
 
                 await cardObject.BindAsync(cards[i], faceUp);
                 if (this == null)
@@ -817,7 +1004,7 @@ namespace SHIN
 
                 if (playDrawSound)
                 {
-                    InGameSfx.PlayCardDraw();
+                    PokerSfx.PlayCardDraw();
                     if (i < count - 1)
                     {
                         await Task.Delay(120);
@@ -864,7 +1051,7 @@ namespace SHIN
                 for (var c = 0; c < slot.childCount; c++)
                 {
                     var child = slot.GetChild(c);
-                    if (child.GetComponent<CardObject>() != null)
+                    if (child.GetComponent<PokerCardObject>() != null)
                         child.gameObject.SetActive(false);
                 }
             }
@@ -919,7 +1106,7 @@ namespace SHIN
                 return;
 
             if (pot > _displayedPot)
-                InGameSfx.PlayPotUp();
+                PokerSfx.PlayPotUp();
 
             _potTween?.Kill();
             _potTween = DOTween

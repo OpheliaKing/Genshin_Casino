@@ -8,7 +8,7 @@ using UnityEngine.UI;
 
 namespace SHIN
 {
-    public class InGameStackUI : MonoBehaviour
+    public class PokerStackUI : MonoBehaviour
     {
         private const float GoldTweenDuration = 0.45f;
 
@@ -73,7 +73,7 @@ namespace SHIN
             var resourceManager = GameManager.Instance?.ResourceManager;
             if (resourceManager == null)
             {
-                Debug.LogError("[InGameStackUI] ResourceManager가 없습니다.");
+                Debug.LogError("[PokerStackUI] ResourceManager가 없습니다.");
                 return;
             }
 
@@ -102,7 +102,7 @@ namespace SHIN
 
             if (sprite == null)
             {
-                Debug.LogWarning($"[InGameStackUI] 아이콘 로드 실패: {iconPath}");
+                Debug.LogWarning($"[PokerStackUI] 아이콘 로드 실패: {iconPath}");
                 return;
             }
 

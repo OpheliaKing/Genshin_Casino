@@ -20,16 +20,16 @@ namespace SHIN
         public UIBase Current => _uiStack.Count > 0 ? _uiStack.Peek().UI : null;
         public int Count => _uiStack.Count;
 
-        public async Task PreloadInGameUIAsync()
+        public async Task PreloadPokerUIAsync()
         {
             var resourceManager = ResolveResourceManager();
             if (resourceManager == null)
                 return;
 
             await resourceManager.PreloadLabelAsync(PublicVariable.Label.Preload);
-            await resourceManager.PreloadLabelAsync(PublicVariable.Label.InGame);
-            await CardObject.PreloadSpritesAsync();
-            await GameResultUI.PreloadSpritesAsync();
+            await resourceManager.PreloadLabelAsync(PublicVariable.Label.Poker);
+            await PokerCardObject.PreloadSpritesAsync();
+            await PokerGameResultUI.PreloadSpritesAsync();
             await EnsureFadeUIAsync();
         }
 

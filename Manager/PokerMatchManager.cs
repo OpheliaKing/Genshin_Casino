@@ -4,7 +4,10 @@ using UnityEngine;
 
 namespace SHIN
 {
-    public class InGameManager : ManagerBase
+    /// <summary>
+    /// 포커 한 매치 세션. <see cref="InGamePokerUI"/>와 같은 수명으로 붙이며 GameManager에 캐시하지 않는다.
+    /// </summary>
+    public class PokerMatchManager : MonoBehaviour
     {
         private const int SmallBlind = 5;
         private const int BigBlind = 10;
@@ -24,8 +27,7 @@ namespace SHIN
         private const float ShowdownReactDelayMax = 2.5f;
 
         private OpponentData _opponentData;
-        private InGameUI _ui;
-        private bool _isStarting;
+        private InGamePokerUI _ui;
         private bool _waitingPlayer;
         private bool _matchOver;
         private bool _handBusy;
@@ -57,52 +59,27 @@ namespace SHIN
         public int CurrentBet => _currentBet;
         public int PlayerStreetBet => _playerStreetBet;
 
-        public void StartMatch(OpponentData opponentData)
-        {
-            _ = StartMatchAsync(opponentData);
-        }
-
         /// <summary>
-        /// 인게임 UI 표시 + 셋업까지. 페이드 아웃 중(검은 화면)에 호출한다.
-        /// 시작/턴 연출은 <see cref="BeginGameplayAsync"/>에서 페이드 인 이후 재생한다.
+        /// 이미 Show된 <see cref="InGamePokerUI"/>에 매치를 붙인다. 페이드 아웃 중(검은 화면)에 호출.
         /// </summary>
-        public async Task EnterMatchAsync(OpponentData opponentData)
+        public async Task SetupMatchAsync(InGamePokerUI ui, OpponentData opponentData)
         {
-            if (opponentData == null || _isStarting)
+            if (ui == null || opponentData == null)
                 return;
 
-            var uiManager = GameManager.Instance?.UIManager;
-            if (uiManager == null)
-                return;
-
+            _ui = ui;
             _opponentData = opponentData;
-            _isStarting = true;
 
-            var shown = new TaskCompletionSource<InGameUI>();
-            uiManager.Show(PublicVariable.Address.InGameUI, ui =>
-            {
-                _isStarting = false;
-                if (ui is InGameUI inGameUI)
-                    shown.TrySetResult(inGameUI);
-                else
-                    shown.TrySetResult(null);
-            });
-
-            var inGameUI = await shown.Task;
-            if (inGameUI == null)
+            await ui.SetupAsync(_opponentData);
+            if (this == null || _ui == null)
                 return;
 
-            _ui = inGameUI;
-            await inGameUI.SetupAsync(_opponentData);
-            if (this == null || inGameUI == null)
-                return;
-
-            inGameUI.BindMatch(this);
+            ui.BindMatch(this);
 
             var playerData = GameManager.Instance != null
                 ? await GameManager.Instance.EnsurePlayerDataAsync()
                 : null;
-            if (this == null || inGameUI == null)
+            if (this == null || _ui == null)
                 return;
 
             var playerGold = playerData != null ? playerData.haveGold : 100;
@@ -125,9 +102,8 @@ namespace SHIN
 
             GameManager.Instance?.SoundManager?.PlayBgm(PublicVariable.Address.InGameBgm);
 
-            InGameSfx.PlayCardShuffle();
+            PokerSfx.PlayCardShuffle();
 
-            // 표정(GAME_START)과 시작 대사를 같은 타이밍에
             _ui.ShowOpponentReaction(CharacterExpressionType.GAME_START);
 
             var startHold = Random.Range(StartAnnounceHoldMin, StartAnnounceHoldMax);
@@ -136,15 +112,6 @@ namespace SHIN
                 return;
 
             await StartHandAsync();
-        }
-
-        /// <summary>Enter + Begin을 한 번에 (페이드 없이 바로 테스트할 때).</summary>
-        public async Task StartMatchAsync(OpponentData opponentData)
-        {
-            await EnterMatchAsync(opponentData);
-            if (this == null || _ui == null)
-                return;
-            await BeginGameplayAsync();
         }
 
         public void OnPlayerAction(PokerAction action)
@@ -199,16 +166,16 @@ namespace SHIN
             if (_dealerIsPlayer)
             {
                 PutChips(true, SmallBlind);
-                InGameSfx.PlayChipBet();
+                PokerSfx.PlayChipBet();
                 PutChips(false, BigBlind);
-                InGameSfx.PlayChipBet();
+                PokerSfx.PlayChipBet();
             }
             else
             {
                 PutChips(false, SmallBlind);
-                InGameSfx.PlayChipBet();
+                PokerSfx.PlayChipBet();
                 PutChips(true, BigBlind);
-                InGameSfx.PlayChipBet();
+                PokerSfx.PlayChipBet();
             }
 
             _currentBet = BigBlind;

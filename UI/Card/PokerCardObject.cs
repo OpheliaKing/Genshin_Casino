@@ -8,7 +8,7 @@ using UnityEngine.UI;
 
 namespace SHIN
 {
-    public class CardObject : MonoBehaviour
+    public class PokerCardObject : MonoBehaviour
     {
         private const string FrontSpriteKey = "sprite_card_base_001";
         private const string BackSpriteKey = "sprite_card_base_002";
@@ -94,7 +94,7 @@ namespace SHIN
             await ApplyFaceStateAsync();
 
             if (faceUp && !wasFaceUp && playRevealSound)
-                InGameSfx.PlayCardFlip();
+                PokerSfx.PlayCardFlip();
         }
 
         private async Task ApplyFaceStateAsync()
@@ -240,7 +240,7 @@ namespace SHIN
                 if (_frontSprite == null)
                 {
                     SetContentVisible(false);
-                    Debug.LogWarning("[CardObject] 앞면 스프라이트가 없어 내 패/공용 카드를 숨깁니다.");
+                    Debug.LogWarning("[PokerCardObject] 앞면 스프라이트가 없어 내 패/공용 카드를 숨깁니다.");
                     return;
                 }
 
@@ -252,7 +252,7 @@ namespace SHIN
                 if (_backSprite == null)
                 {
                     SetContentVisible(false);
-                    Debug.LogWarning("[CardObject] 뒷면 스프라이트가 없어 상대 카드를 숨깁니다.");
+                    Debug.LogWarning("[PokerCardObject] 뒷면 스프라이트가 없어 상대 카드를 숨깁니다.");
                     return;
                 }
 
@@ -443,7 +443,7 @@ namespace SHIN
                 var atlas = await resourceManager.LoadAsync<SpriteAtlas>(PublicVariable.Address.InGameAtlas);
                 if (atlas == null)
                 {
-                    Debug.LogError("[CardObject] InGameAtlas 로드 실패");
+                    Debug.LogError("[PokerCardObject] InGameAtlas 로드 실패");
                     return;
                 }
 
@@ -451,9 +451,9 @@ namespace SHIN
                 _backSprite = ResolveSprite(atlas, BackSpriteKey);
 
                 if (_frontSprite == null)
-                    Debug.LogWarning($"[CardObject] 앞면 스프라이트 없음: {FrontSpriteKey}");
+                    Debug.LogWarning($"[PokerCardObject] 앞면 스프라이트 없음: {FrontSpriteKey}");
                 if (_backSprite == null)
-                    Debug.LogWarning($"[CardObject] 뒷면 스프라이트 없음: {BackSpriteKey}");
+                    Debug.LogWarning($"[PokerCardObject] 뒷면 스프라이트 없음: {BackSpriteKey}");
 
                 _spritesReady = _frontSprite != null && _backSprite != null;
             }

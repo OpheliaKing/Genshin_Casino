@@ -9,6 +9,7 @@ namespace SHIN
         {
             public const string UI = "UI";
             public const string InGame = "InGame";
+            public const string Poker = "Poker";
             public const string Popup = "Popup";
             public const string Preload = "Preload";
             public const string Character = "Character";
@@ -49,11 +50,11 @@ namespace SHIN
             public const string SeVersusStart = "Assets/Addressables/Audio/SE/Versus/se_versus_001.mp3";
             public const string SeVersusClash = "Assets/Addressables/Audio/SE/Versus/se_versus_002.wav";
             public const string OpponentDataSO = "Assets/Addressables/SO/OpponentDataSO.asset";
-            public const string CardItem = "Assets/Addressables/Prefab/UI/CardObject.prefab";
-            public const string InGameUI = "Assets/Addressables/Prefab/UI/InGameUI.prefab";
+            public const string CardItem = "Assets/Addressables/Prefab/UI/PokerUI/PokerCardObject.prefab";
+            public const string InGamePokerUI = "Assets/Addressables/Prefab/UI/PokerUI/InGamePokerUI.prefab";
             public const string OpponentSelectUI = "Assets/Addressables/Prefab/UI/OpponentSelectUI/OpponentSelectUI.prefab";
             public const string OpponentSelectItem = "Assets/Addressables/Prefab/UI/OpponentSelectUI/OpponentSelectItem.prefab";
-            public const string VersusUI = "Assets/Addressables/Prefab/UI/VersusUI.prefab";
+            public const string VersusUI = "Assets/Addressables/Prefab/UI/PokerUI/VersusUI.prefab";
             public const string FadeUI = "Assets/Addressables/Prefab/UI/FadeUI.prefab";
             public const string StartUI = "Assets/Addressables/Prefab/UI/StartUI.prefab";
             public const string MainUI = "Assets/Addressables/Prefab/UI/MainUI.prefab";

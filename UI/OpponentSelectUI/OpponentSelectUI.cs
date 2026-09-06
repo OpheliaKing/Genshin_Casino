@@ -98,7 +98,7 @@ namespace SHIN
 
         private void OnOpponentSelected(OpponentData data)
         {
-            GameManager.Instance?.GameStart(data);
+            InGamePokerUI.GameStart(data);
         }
 
         private void ClearItems()

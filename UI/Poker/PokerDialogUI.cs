@@ -5,7 +5,7 @@ using UnityEngine.UI;
 
 namespace SHIN
 {
-    public class DialogUI : MonoBehaviour
+    public class PokerDialogUI : MonoBehaviour
     {
         [SerializeField] private TextMeshProUGUI _text;
         [SerializeField] private float _charsPerSecond = 28f;
@@ -36,7 +36,7 @@ namespace SHIN
 
             // 비활성 상태에서 ForceMeshUpdate하면 characterCount가 이전 대사 값으로 남을 수 있음.
             gameObject.SetActive(true);
-            InGameSfx.PlayCharacterDialog();
+            PokerSfx.PlayCharacterDialog();
 
             if (_text == null)
                 return;
@@ -98,7 +98,7 @@ namespace SHIN
             var soundManager = GameManager.Instance?.SoundManager;
             if (soundManager == null)
             {
-                Debug.LogWarning("[DialogUI] SoundManager가 없습니다.");
+                Debug.LogWarning("[PokerDialogUI] SoundManager가 없습니다.");
                 return;
             }
 

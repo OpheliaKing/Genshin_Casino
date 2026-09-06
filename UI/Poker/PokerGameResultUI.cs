@@ -9,7 +9,7 @@ namespace SHIN
     /// <summary>
     /// 핸드 승/패 결과 이미지. DOTween으로 등장·퇴장.
     /// </summary>
-    public class GameResultUI : MonoBehaviour
+    public class PokerGameResultUI : MonoBehaviour
     {
         [SerializeField] private Image _image;
         [SerializeField] private CanvasGroup _canvasGroup;
@@ -59,7 +59,7 @@ namespace SHIN
             {
                 if (sprite == null)
                 {
-                    Debug.LogWarning($"[GameResultUI] {(playerWins ? "승리" : "패배")} 스프라이트가 없습니다.");
+                    Debug.LogWarning($"[PokerGameResultUI] {(playerWins ? "승리" : "패배")} 스프라이트가 없습니다.");
                     return;
                 }
 
@@ -221,7 +221,7 @@ namespace SHIN
                 var atlas = await resourceManager.LoadAsync<SpriteAtlas>(PublicVariable.Address.InGameAtlas);
                 if (atlas == null)
                 {
-                    Debug.LogError("[GameResultUI] InGameAtlas 로드 실패");
+                    Debug.LogError("[PokerGameResultUI] InGameAtlas 로드 실패");
                     return;
                 }
 
@@ -230,9 +230,9 @@ namespace SHIN
                 _loseSprite = ResolveSprite(atlas, PublicVariable.Address.InGameLoseSprite);
 
                 if (_winSprite == null)
-                    Debug.LogWarning($"[GameResultUI] 아틀라스에 승리 스프라이트 없음: {PublicVariable.Address.InGameWinSprite} (프리팹 직접 참조로 폴백 가능)");
+                    Debug.LogWarning($"[PokerGameResultUI] 아틀라스에 승리 스프라이트 없음: {PublicVariable.Address.InGameWinSprite} (프리팹 직접 참조로 폴백 가능)");
                 if (_loseSprite == null)
-                    Debug.LogWarning($"[GameResultUI] 아틀라스에 패배 스프라이트 없음: {PublicVariable.Address.InGameLoseSprite} (프리팹 직접 참조로 폴백 가능)");
+                    Debug.LogWarning($"[PokerGameResultUI] 아틀라스에 패배 스프라이트 없음: {PublicVariable.Address.InGameLoseSprite} (프리팹 직접 참조로 폴백 가능)");
 
                 _spritesReady = true;
             }
