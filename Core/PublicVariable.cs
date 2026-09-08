@@ -17,6 +17,7 @@ namespace SHIN
             public const string Data = "Data";
             public const string Audio = "Audio";
             public const string OpponentSelect = "OpponentSelect";
+            public const string Survivors = "Survivors";
         }
 
         public static class Address
@@ -50,14 +51,15 @@ namespace SHIN
             public const string SeVersusStart = "Assets/Addressables/Audio/SE/Versus/se_versus_001.mp3";
             public const string SeVersusClash = "Assets/Addressables/Audio/SE/Versus/se_versus_002.wav";
             public const string OpponentDataSO = "Assets/Addressables/SO/OpponentDataSO.asset";
-            public const string CardItem = "Assets/Addressables/Prefab/UI/PokerUI/PokerCardObject.prefab";
-            public const string InGamePokerUI = "Assets/Addressables/Prefab/UI/PokerUI/InGamePokerUI.prefab";
+            public const string CardItem = "Assets/Addressables/Prefab/InGame/Poker/PokerCardObject.prefab";
+            public const string InGamePokerUI = "Assets/Addressables/Prefab/InGame/Poker/InGamePokerUI.prefab";
             public const string OpponentSelectUI = "Assets/Addressables/Prefab/UI/OpponentSelectUI/OpponentSelectUI.prefab";
             public const string OpponentSelectItem = "Assets/Addressables/Prefab/UI/OpponentSelectUI/OpponentSelectItem.prefab";
-            public const string VersusUI = "Assets/Addressables/Prefab/UI/PokerUI/VersusUI.prefab";
+            public const string VersusUI = "Assets/Addressables/Prefab/InGame/Poker/VersusUI.prefab";
             public const string FadeUI = "Assets/Addressables/Prefab/UI/FadeUI.prefab";
             public const string StartUI = "Assets/Addressables/Prefab/UI/StartUI.prefab";
             public const string MainUI = "Assets/Addressables/Prefab/UI/MainUI.prefab";
+            public const string SurvivorsRunSession = "Assets/Addressables/Prefab/InGame/SurvivorsRun/SurvivorsRunSession.prefab";
             /// <summary>타이틀 BGM. 에셋 추가 후 GameManager._titleBgmAddress에 이 경로를 넣는다.</summary>
             public const string TitleBgm = "Assets/Addressables/Audio/BGM/bgm_title_001.mp3";
         }
