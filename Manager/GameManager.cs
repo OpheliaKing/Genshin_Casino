@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 namespace SHIN
 {
@@ -13,6 +14,9 @@ namespace SHIN
         [SerializeField] private ResourceManager _resourceManager;
         [SerializeField] private UIManager _uiManager;
         [SerializeField] private SoundManager _soundManager;
+        [SerializeField] private InputManager _inputManager;
+        /// <summary>전역 Input Actions. Addressables 없이 직접 참조.</summary>
+        [SerializeField] private InputActionAsset _inputActions;
         /// <summary>타이틀 BGM Addressables 주소. 비어 있으면 재생하지 않는다.</summary>
         [SerializeField] private string _titleBgmAddress = "";
 
@@ -45,6 +49,17 @@ namespace SHIN
             {
                 ManagerBase.EnsureManager(transform, ref _soundManager);
                 return _soundManager;
+            }
+        }
+
+        public InputManager InputManager
+        {
+            get
+            {
+                ManagerBase.EnsureManager(transform, ref _inputManager);
+                if (_inputManager != null && _inputActions != null)
+                    _inputManager.SetActionsAsset(_inputActions);
+                return _inputManager;
             }
         }
 
@@ -112,6 +127,10 @@ namespace SHIN
 
         private async Task BootAsync()
         {
+            // 부팅 시 UI ActionMap 준비
+            var inputManager = InputManager;
+            inputManager?.EnableMap(SHIN.InputManager.ActionMapName.UI);
+
             await UIManager.FadeToAsync(1f, 0f);
             if (this == null)
                 return;
