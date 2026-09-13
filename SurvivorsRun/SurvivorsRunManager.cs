@@ -3,16 +3,19 @@ using UnityEngine;
 
 namespace SHIN
 {
-    public class SurvivorsRunManager : MonoBehaviour
+    public partial class SurvivorsRunManager : MonoBehaviour
     {
         private float _timeScale = 1f;
         private SurvivorsRunCombat _combat;
         private SurvivorsRunCharacterSelectUI _characterSelectUI;
         private SurvivorsRunUnitData _selectedCharacter;
+        private GameObject _playerInstance;
+        private SurvivorsRunUnitBase _playerUnit;
 
         public float TimeScale => _timeScale;
         public SurvivorsRunCombat Combat => _combat;
         public SurvivorsRunUnitData SelectedCharacter => _selectedCharacter;
+        public SurvivorsRunUnitBase PlayerUnit => _playerUnit;
 
         private void Awake()
         {
@@ -40,7 +43,7 @@ namespace SHIN
 
         private async Task InitializeSessionAsync()
         {
-            // 캐릭터 선택은 UI 조작이므로 UI ActionMap 사용
+            SetPlayerControlEnabled(false);
             EnableInputMap(InputManager.ActionMapName.UI);
             await ShowCharacterSelectAsync();
         }
@@ -76,8 +79,13 @@ namespace SHIN
             if (data == null)
                 return;
 
+            _ = OnCharacterSelectedAsync(data);
+        }
+
+        private async Task OnCharacterSelectedAsync(SurvivorsRunUnitData data)
+        {
             _selectedCharacter = data;
-            EnableInputMap(InputManager.ActionMapName.SurvivorsRun);
+            SetPlayerControlEnabled(false);
 
             var uiManager = GameManager.Instance?.UIManager;
             if (uiManager != null && _characterSelectUI != null)
@@ -86,36 +94,100 @@ namespace SHIN
                 _characterSelectUI = null;
             }
 
-            // 이후 플레이어 스폰 등은 여기서 이어가면 된다.
-            Debug.Log($"[SurvivorsRunManager] 캐릭터 선택: {data.UnitId} / {data.UnitName}");
+            // 뱀서 인풋 → 스폰 → 플레이어 캐싱 → 조작 시작
+            EnableInputMap(InputManager.ActionMapName.SurvivorsRun);
+            await SpawnSelectedCharacterAsync(data);
+
+            if (_playerUnit != null)
+                SetPlayerControlEnabled(true);
         }
 
-        private static void EnableInputMap(string mapName)
+        private async Task SpawnSelectedCharacterAsync(SurvivorsRunUnitData data)
         {
-            var gameManager = GameManager.Instance;
-            var inputManager = gameManager != null ? gameManager.InputManager : null;
-            if (inputManager == null)
+            if (data == null)
+                return;
+
+            if (string.IsNullOrWhiteSpace(data.UnitPrefabPath))
             {
-                Debug.LogError("[SurvivorsRunManager] InputManager가 없어 입력을 전환할 수 없습니다.");
+                Debug.LogError($"[SurvivorsRunManager] 프리팹 경로가 비어 있습니다: {data.UnitId}");
                 return;
             }
 
-            inputManager.EnableMap(mapName);
+            var resourceManager = GameManager.Instance?.ResourceManager;
+            if (resourceManager == null)
+            {
+                Debug.LogError("[SurvivorsRunManager] ResourceManager가 없습니다.");
+                return;
+            }
+
+            ReleasePlayerInstance();
+
+            var instance = await resourceManager.InstantiateAsync(
+                data.UnitPrefabPath.Trim(),
+                parent: transform,
+                startInactive: false);
+
+            if (this == null)
+            {
+                if (instance != null)
+                    resourceManager.ReleaseInstance(instance);
+                return;
+            }
+
+            if (instance == null)
+            {
+                Debug.LogError($"[SurvivorsRunManager] 캐릭터 프리팹 생성 실패: {data.UnitPrefabPath}");
+                return;
+            }
+
+            instance.transform.localPosition = Vector3.zero;
+            _playerInstance = instance;
+
+            _playerUnit = instance.GetComponent<SurvivorsRunUnitBase>();
+            if (_playerUnit == null)
+                _playerUnit = instance.GetComponentInChildren<SurvivorsRunUnitBase>(true);
+
+            if (_playerUnit != null)
+            {
+                _playerUnit.BindManager(this);
+                _playerUnit.Setup(
+                    data.UnitId,
+                    SURVIVORSRUN_UNIT_TYPE.PLAYER,
+                    data.UnitHP,
+                    Mathf.RoundToInt(data.UnitAttack),
+                    data.UnitSpeed,
+                    attackSpeed: 1f);
+            }
+            else
+            {
+                Debug.LogWarning("[SurvivorsRunManager] 생성된 프리팹에 SurvivorsRunUnitBase가 없습니다.");
+            }
+        }
+
+        private void ReleasePlayerInstance()
+        {
+            SetPlayerControlEnabled(false);
+
+            if (_playerInstance == null)
+            {
+                _playerUnit = null;
+                return;
+            }
+
+            var resourceManager = GameManager.Instance?.ResourceManager;
+            if (resourceManager != null)
+                resourceManager.ReleaseInstance(_playerInstance);
+            else
+                Destroy(_playerInstance);
+
+            _playerInstance = null;
+            _playerUnit = null;
         }
 
         private void OnDestroy()
         {
-            var gameManager = GameManager.Instance;
-            var inputManager = gameManager != null ? gameManager.InputManager : null;
-            if (inputManager == null)
-                return;
-
-            if (inputManager.CurrentMap == InputManager.ActionMapName.SurvivorsRun ||
-                inputManager.CurrentMap == InputManager.ActionMapName.UI)
-            {
-                // 로비로 돌아갈 때 UI 맵으로 복귀
-                inputManager.EnableMap(InputManager.ActionMapName.UI);
-            }
+            ReleasePlayerInstance();
+            RestoreLobbyInputMap();
         }
     }
 }

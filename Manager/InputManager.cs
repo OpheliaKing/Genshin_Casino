@@ -116,6 +116,48 @@ namespace SHIN
             return action.ReadValue<TValue>();
         }
 
+        /// <summary>
+        /// 버튼류 액션용. Move 같은 연속 Value는 ReadValue 폴링을 권장한다.
+        /// </summary>
+        public bool TrySubscribe(
+            string mapName,
+            string actionName,
+            System.Action<InputAction.CallbackContext> onPerformed,
+            System.Action<InputAction.CallbackContext> onCanceled = null)
+        {
+            var action = GetAction(mapName, actionName);
+            if (action == null)
+                return false;
+
+            if (onPerformed != null)
+                action.performed += onPerformed;
+            if (onCanceled != null)
+                action.canceled += onCanceled;
+            return true;
+        }
+
+        public bool TryUnsubscribe(
+            string mapName,
+            string actionName,
+            System.Action<InputAction.CallbackContext> onPerformed,
+            System.Action<InputAction.CallbackContext> onCanceled = null)
+        {
+            var action = GetAction(mapName, actionName);
+            if (action == null)
+                return false;
+
+            if (onPerformed != null)
+                action.performed -= onPerformed;
+            if (onCanceled != null)
+                action.canceled -= onCanceled;
+            return true;
+        }
+
+        public static class SurvivorsRunAction
+        {
+            public const string Move = "Move";
+        }
+
         private void TryInitialize()
         {
             if (_initialized)

@@ -19,6 +19,11 @@ namespace SHIN
         public string UnitSpritePath => _unitSpritePath;
 
         [SerializeField]
+        [Tooltip("Addressables 프리팹 주소")]
+        private string _unitPrefabPath;
+        public string UnitPrefabPath => _unitPrefabPath;
+
+        [SerializeField]
         private int _unitHP;
         public int UnitHP => _unitHP;
 
