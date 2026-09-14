@@ -109,4 +109,11 @@ namespace SHIN
         {
         }
     }
+
+    public enum SURVIVORSRUN_ATTACK_TYPEP
+    {
+        NONE,
+        RANGE,
+        MELEE,
+    }
 }

@@ -38,5 +38,10 @@ namespace SHIN
         [SerializeField]
         private float _unitSpeed;
         public float UnitSpeed => _unitSpeed;
+
+        [SerializeField]
+        [Tooltip("몬스터 전용. 비우면 돌진(Contact)만. 플레이어 데이터는 비워 둔다.")]
+        private SurvivorsRunEnemyLoadout _enemyLoadout = new();
+        public SurvivorsRunEnemyLoadout EnemyLoadout => _enemyLoadout;
     }
 }
