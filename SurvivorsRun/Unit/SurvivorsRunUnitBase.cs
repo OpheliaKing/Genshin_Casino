@@ -17,6 +17,7 @@ namespace SHIN
 
         private SURVIVORSRUN_UNIT_TYPE _unitType;
         private SurvivorsRunManager _manager;
+        private SurvivorsRunAttack _attackModule;
         private bool _isDead;
 
         public string Tid => _tid;
@@ -24,13 +25,16 @@ namespace SHIN
         public int MaxHp => _maxHp;
         public int Attack => _attack;
         public float MoveSpeed => _moveSpeed;
+        public float AttackSpeed => _attackSpeed;
         public SURVIVORSRUN_UNIT_TYPE UnitType => _unitType;
         public SurvivorsRunManager Manager => _manager;
+        public SurvivorsRunAttack AttackModule => _attackModule;
         public bool IsDead => _isDead || _hp <= 0;
 
         public void BindManager(SurvivorsRunManager manager)
         {
             _manager = manager;
+            EnsureAttackModule();
         }
 
         public void Setup(
@@ -50,6 +54,21 @@ namespace SHIN
             _attackSpeed = Mathf.Max(0f, attackSpeed);
             _characterSpeed = 1f;
             _isDead = false;
+
+            EnsureAttackModule();
+            if (_attackModule != null)
+                _attackModule.ResetCooldown();
+        }
+
+        private void EnsureAttackModule()
+        {
+            if (_attackModule == null)
+                _attackModule = GetComponent<SurvivorsRunAttack>();
+
+            if (_attackModule == null)
+                _attackModule = gameObject.AddComponent<SurvivorsRunAttack>();
+
+            _attackModule.BindOwner(this);
         }
 
         public void SetMoveSpeed(float moveSpeed)
