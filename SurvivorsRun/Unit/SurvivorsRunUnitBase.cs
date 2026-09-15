@@ -128,6 +128,15 @@ namespace SHIN
 
             _isDead = true;
             _hp = 0;
+
+            if (_unitType == SURVIVORSRUN_UNIT_TYPE.PLAYER)
+            {
+                Debug.Log(
+                    $"[SurvivorsRun] Player death: {_tid ?? name}" +
+                    (killer != null ? $" (killed by {killer.Tid ?? killer.name})" : string.Empty),
+                    this);
+            }
+
             OnDied(killer);
             gameObject.SetActive(false);
         }

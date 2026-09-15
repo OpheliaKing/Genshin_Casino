@@ -3,7 +3,7 @@ using UnityEngine;
 namespace SHIN
 {
     /// <summary>
-    /// SurvivorsRun 맵 이동/스폰 공통 clamp 범위.
+    /// 레거시 clamp. 신규는 <see cref="SurvivorsRunMap"/>를 사용한다.
     /// </summary>
     public class SurvivorsRunMapBounds : MonoBehaviour
     {

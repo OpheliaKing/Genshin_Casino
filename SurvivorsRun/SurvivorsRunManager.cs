@@ -94,12 +94,14 @@ namespace SHIN
                 _characterSelectUI = null;
             }
 
-            // 뱀서 인풋 → 스폰 → 플레이어 캐싱 → 조작 시작
+            // 맵 → 플레이어(맵 스폰 위치) → 조작/적 스폰
             EnableInputMap(InputManager.ActionMapName.SurvivorsRun);
+            await EnsureMapAsync();
             await SpawnSelectedCharacterAsync(data);
 
             if (_playerUnit != null)
             {
+                BindCameraToPlayer();
                 SetPlayerControlEnabled(true);
                 await StartEnemySpawningAsync();
             }
@@ -128,7 +130,7 @@ namespace SHIN
             var instance = await resourceManager.InstantiateAsync(
                 data.UnitPrefabPath.Trim(),
                 parent: transform,
-                startInactive: false);
+                startInactive: true);
 
             if (this == null)
             {
@@ -143,7 +145,7 @@ namespace SHIN
                 return;
             }
 
-            instance.transform.localPosition = Vector3.zero;
+            instance.transform.position = GetPlayerSpawnWorldPosition();
             _playerInstance = instance;
 
             _playerUnit = instance.GetComponent<SurvivorsRunUnitBase>();
@@ -160,15 +162,19 @@ namespace SHIN
                     Mathf.RoundToInt(data.UnitAttack),
                     data.UnitSpeed,
                     attackSpeed: 1f);
+                _playerUnit.transform.position = ClampToMap(_playerUnit.transform.position);
             }
             else
             {
                 Debug.LogWarning("[SurvivorsRunManager] 생성된 프리팹에 SurvivorsRunUnitBase가 없습니다.");
             }
+
+            instance.SetActive(true);
         }
 
         private void ReleasePlayerInstance()
         {
+            StopCameraFollow();
             SetPlayerControlEnabled(false);
 
             if (_playerInstance == null)
@@ -191,6 +197,7 @@ namespace SHIN
         {
             ReleaseAllEnemies();
             ReleasePlayerInstance();
+            ReleaseMapInstance();
             RestoreLobbyInputMap();
         }
     }

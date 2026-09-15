@@ -68,6 +68,17 @@ namespace SHIN
             }
 
             var handle = Addressables.InstantiateAsync(address, parent);
+
+            // await 전에 Completed로 꺼 두면, 완료 직후 한 프레임 노출을 줄인다.
+            if (startInactive)
+            {
+                handle.Completed += op =>
+                {
+                    if (op.Status == AsyncOperationStatus.Succeeded && op.Result != null)
+                        op.Result.SetActive(false);
+                };
+            }
+
             var instance = await handle.Task;
 
             if (handle.Status != AsyncOperationStatus.Succeeded || instance == null)
@@ -76,7 +87,7 @@ namespace SHIN
                 return null;
             }
 
-            if (startInactive)
+            if (startInactive && instance.activeSelf)
                 instance.SetActive(false);
 
             return instance;

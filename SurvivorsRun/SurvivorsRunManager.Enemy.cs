@@ -9,7 +9,6 @@ namespace SHIN
     /// </summary>
     public partial class SurvivorsRunManager
     {
-        [SerializeField] private SurvivorsRunMapBounds _mapBounds;
         [SerializeField] private Camera _runCamera;
         [SerializeField] private Transform _enemyRoot;
         [SerializeField] private float _spawnOutsidePadding = 1.5f;
@@ -21,7 +20,6 @@ namespace SHIN
         private readonly List<SurvivorsRunUnitBase> _activeEnemies = new();
 
         public SurvivorsRunEnemySO EnemySo => _enemySo;
-        public SurvivorsRunMapBounds MapBounds => _mapBounds;
         public IReadOnlyList<SurvivorsRunUnitBase> ActiveEnemies => _activeEnemies;
         public int ActiveEnemyCount => CountAliveEnemies();
 
@@ -29,15 +27,6 @@ namespace SHIN
         {
             if (_runCamera == null)
                 _runCamera = GetComponentInChildren<Camera>(true);
-
-            if (_mapBounds == null)
-                _mapBounds = FindFirstObjectByType<SurvivorsRunMapBounds>();
-
-            if (_mapBounds == null)
-            {
-                _mapBounds = gameObject.AddComponent<SurvivorsRunMapBounds>();
-                Debug.LogWarning("[SurvivorsRunManager] MapBounds가 없어 세션에 기본 범위를 추가했습니다. 맵에 SurvivorsRunMapBounds를 두는 것을 권장합니다.");
-            }
 
             if (_enemyRoot == null)
             {
@@ -139,10 +128,11 @@ namespace SHIN
             EnsureEnemyRuntimeRefs();
             position = ClampToMap(position);
 
+            // 활성 상태로 만들면 한 프레임 부모 원점에 보였다가 텔레포트됨
             var instance = await resourceManager.InstantiateAsync(
                 data.UnitPrefabPath.Trim(),
                 parent: _enemyRoot,
-                startInactive: false);
+                startInactive: true);
 
             if (this == null)
             {
@@ -184,6 +174,7 @@ namespace SHIN
                 loadout = instance.AddComponent<SurvivorsRunEnemyLoadoutController>();
             loadout.Setup(data.EnemyLoadout);
 
+            instance.SetActive(true);
             _activeEnemies.Add(unit);
             return unit;
         }
@@ -231,8 +222,12 @@ namespace SHIN
 
         public Vector3 ClampToMap(Vector3 position)
         {
-            EnsureEnemyRuntimeRefs();
-            return _mapBounds != null ? _mapBounds.ClampPosition(position) : position;
+            if (_activeMap != null)
+                return _activeMap.ClampPosition(position);
+
+            // 맵 미생성 폴백: 씬에 남은 레거시 Bounds가 있으면 사용
+            var legacyBounds = FindFirstObjectByType<SurvivorsRunMapBounds>();
+            return legacyBounds != null ? legacyBounds.ClampPosition(position) : position;
         }
 
         public void PruneInactiveEnemies()
