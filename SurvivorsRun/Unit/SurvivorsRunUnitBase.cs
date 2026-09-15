@@ -88,7 +88,8 @@ namespace SHIN
             if (direction.sqrMagnitude <= 0.0001f)
                 return;
 
-            var delta = direction.normalized * (_moveSpeed * Time.deltaTime);
+            var scale = _manager != null ? _manager.TimeScale : 1f;
+            var delta = direction.normalized * (_moveSpeed * Time.deltaTime * scale);
             var pos = transform.position;
             pos.x += delta.x;
             pos.y += delta.y;
@@ -104,6 +105,10 @@ namespace SHIN
                 return false;
 
             _hp = Mathf.Max(0, _hp - damage);
+            Debug.Log(
+                $"[SurvivorsRun] HP {_tid ?? name}: -{damage} → {_hp}/{_maxHp}" +
+                (attacker != null ? $" (by {attacker.Tid ?? attacker.name})" : string.Empty),
+                this);
             OnDamaged(damage, attacker);
 
             if (_hp <= 0)

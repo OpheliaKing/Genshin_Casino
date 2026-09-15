@@ -99,7 +99,10 @@ namespace SHIN
             await SpawnSelectedCharacterAsync(data);
 
             if (_playerUnit != null)
+            {
                 SetPlayerControlEnabled(true);
+                await StartEnemySpawningAsync();
+            }
         }
 
         private async Task SpawnSelectedCharacterAsync(SurvivorsRunUnitData data)
@@ -186,6 +189,7 @@ namespace SHIN
 
         private void OnDestroy()
         {
+            ReleaseAllEnemies();
             ReleasePlayerInstance();
             RestoreLobbyInputMap();
         }

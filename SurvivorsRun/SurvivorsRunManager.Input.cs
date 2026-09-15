@@ -39,6 +39,7 @@ namespace SHIN
                 InputManager.SurvivorsRunAction.Move);
 
             _playerUnit.Move(move);
+            _playerUnit.transform.position = ClampToMap(_playerUnit.transform.position);
         }
 
         private void EnableInputMap(string mapName)

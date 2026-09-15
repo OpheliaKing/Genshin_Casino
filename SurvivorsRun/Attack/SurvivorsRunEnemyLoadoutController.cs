@@ -17,7 +17,9 @@ namespace SHIN
 
         private SurvivorsRunUnitBase _owner;
         private SurvivorsRunAttack _attack;
+        private SurvivorsRunContactPattern _contactPattern;
         private readonly List<SURVIVORSRUN_ATTACK_PATTERN> _activePatterns = new();
+        private SurvivorsRunAttackPatternBase[] _patternModules;
 
         public SurvivorsRunEnemyLoadout Loadout => _loadout;
         public IReadOnlyList<SURVIVORSRUN_ATTACK_PATTERN> ActivePatterns => _activePatterns;
@@ -26,6 +28,7 @@ namespace SHIN
         {
             _owner = GetComponent<SurvivorsRunUnitBase>();
             _attack = GetComponent<SurvivorsRunAttack>();
+            EnsurePatternModules();
         }
 
         /// <summary>
@@ -34,6 +37,7 @@ namespace SHIN
         public void Setup(SurvivorsRunEnemyLoadout loadout)
         {
             _loadout = loadout ?? new SurvivorsRunEnemyLoadout();
+            EnsurePatternModules();
             RebuildActivePatterns();
         }
 
@@ -43,16 +47,54 @@ namespace SHIN
                 RebuildActivePatterns();
         }
 
+        private void EnsurePatternModules()
+        {
+            if (_owner == null)
+                _owner = GetComponent<SurvivorsRunUnitBase>();
+            if (_attack == null)
+                _attack = GetComponent<SurvivorsRunAttack>();
+
+            _contactPattern = GetComponent<SurvivorsRunContactPattern>();
+            if (_contactPattern == null)
+                _contactPattern = gameObject.AddComponent<SurvivorsRunContactPattern>();
+
+            _contactPattern.Setup(_owner, _attack);
+
+            if (GetComponent<SurvivorsRunEnemyChase>() == null)
+                gameObject.AddComponent<SurvivorsRunEnemyChase>();
+
+            _patternModules = GetComponents<SurvivorsRunAttackPatternBase>();
+            for (var i = 0; i < _patternModules.Length; i++)
+            {
+                if (_patternModules[i] != null)
+                    _patternModules[i].Setup(_owner, _attack);
+            }
+        }
+
         private void RebuildActivePatterns()
         {
             _loadout.GetEffectivePatterns(_activePatterns);
+            SyncPatternModules();
 
-            // MVP: 패턴 실행체는 아직 없고, 어떤 패턴으로 싸울지만 확정한다.
-            // 예) Contact만 → 접촉 시 _attack.TryAttack(player)
-            // 예) Orbit 포함 → 이후 OrbitPattern 컴포넌트 활성화
             Debug.Log(
                 $"[EnemyLoadout] {_owner?.Tid ?? name}: patterns={string.Join(", ", _activePatterns)}",
                 this);
+        }
+
+        private void SyncPatternModules()
+        {
+            if (_patternModules == null || _patternModules.Length == 0)
+                EnsurePatternModules();
+
+            for (var i = 0; i < _patternModules.Length; i++)
+            {
+                var module = _patternModules[i];
+                if (module == null)
+                    continue;
+
+                var enabled = _activePatterns.Contains(module.Pattern);
+                module.SetPatternEnabled(enabled);
+            }
         }
 
         /// <summary>
@@ -60,13 +102,13 @@ namespace SHIN
         /// </summary>
         public bool TryContactAttack(SurvivorsRunUnitBase target)
         {
-            if (!_activePatterns.Contains(SURVIVORSRUN_ATTACK_PATTERN.CONTACT))
+            if (_contactPattern == null)
+                EnsurePatternModules();
+
+            if (_contactPattern == null || !_contactPattern.IsPatternEnabled)
                 return false;
 
-            if (_attack == null)
-                return false;
-
-            return _attack.TryAttack(target);
+            return _contactPattern.TryAttackTarget(target);
         }
 
         public bool UsesOnlyContact()
