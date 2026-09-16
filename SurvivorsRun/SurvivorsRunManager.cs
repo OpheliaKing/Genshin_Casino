@@ -163,6 +163,7 @@ namespace SHIN
                     data.UnitSpeed,
                     attackSpeed: 1f);
                 _playerUnit.transform.position = ClampToMap(_playerUnit.transform.position);
+                EnsurePlayerItemController(_playerUnit);
             }
             else
             {
@@ -172,8 +173,26 @@ namespace SHIN
             instance.SetActive(true);
         }
 
+        private static void EnsurePlayerItemController(SurvivorsRunUnitBase playerUnit)
+        {
+            if (playerUnit == null)
+                return;
+
+            var controller = playerUnit.GetComponent<SurvivorsRunPlayerItemController>();
+            if (controller == null)
+                controller = playerUnit.gameObject.AddComponent<SurvivorsRunPlayerItemController>();
+
+            controller.BindOwner(playerUnit);
+        }
+
         private void ReleasePlayerInstance()
         {
+            if (_playerUnit != null)
+            {
+                var itemController = _playerUnit.GetComponent<SurvivorsRunPlayerItemController>();
+                itemController?.ClearAll();
+            }
+
             StopCameraFollow();
             SetPlayerControlEnabled(false);
 

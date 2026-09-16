@@ -31,8 +31,8 @@ namespace SHIN
     }
 
     /// <summary>
-    /// 몬스터가 스폰 시 들고 나오는 패턴 구성.
-    /// ItemData(아이콘/드랍/UI)가 아니라, "이 적은 어떤 패턴으로 싸우는가"만 담는다.
+    /// 몬스터가 스폰 시 들고 나오는 패턴 구성(정보만).
+    /// 실행은 CONTACT → DamageObject, 원거리 → 탄 스폰 등으로 컨트롤러가 처리한다.
     /// </summary>
     [Serializable]
     public class SurvivorsRunEnemyLoadout

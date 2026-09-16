@@ -4,22 +4,23 @@ using UnityEngine;
 namespace SHIN
 {
     /// <summary>
-    /// 몬스터 로드아웃을 Attack에 연결하는 베이스.
-    /// - 로드아웃 비움 → Contact(돌진)만
-    /// - Orbit 등이 있으면 해당 패턴 사용 (패턴 본체는 이후 구현)
+    /// 몬스터 로드아웃(패턴 정보)을 런타임 타격에 연결한다.
+    /// CONTACT → 몸 <see cref="SurvivorsRunDamageObject"/> 활성.
+    /// 원거리 등은 이후 탄 스폰으로 확장.
     /// </summary>
     [RequireComponent(typeof(SurvivorsRunUnitBase))]
-    [RequireComponent(typeof(SurvivorsRunAttack))]
     public class SurvivorsRunEnemyLoadoutController : MonoBehaviour
     {
         [SerializeField]
         private SurvivorsRunEnemyLoadout _loadout = new();
 
+        [SerializeField]
+        [Tooltip("AttackSpeed가 0일 때 Contact 히트 쿨 기본값(초).")]
+        private float _defaultHitCooldown = 0.5f;
+
         private SurvivorsRunUnitBase _owner;
-        private SurvivorsRunAttack _attack;
-        private SurvivorsRunContactPattern _contactPattern;
+        private SurvivorsRunDamageObject _contactDamageObject;
         private readonly List<SURVIVORSRUN_ATTACK_PATTERN> _activePatterns = new();
-        private SurvivorsRunAttackPatternBase[] _patternModules;
 
         public SurvivorsRunEnemyLoadout Loadout => _loadout;
         public IReadOnlyList<SURVIVORSRUN_ATTACK_PATTERN> ActivePatterns => _activePatterns;
@@ -27,8 +28,7 @@ namespace SHIN
         private void Awake()
         {
             _owner = GetComponent<SurvivorsRunUnitBase>();
-            _attack = GetComponent<SurvivorsRunAttack>();
-            EnsurePatternModules();
+            EnsureRuntimeModules();
         }
 
         /// <summary>
@@ -37,7 +37,7 @@ namespace SHIN
         public void Setup(SurvivorsRunEnemyLoadout loadout)
         {
             _loadout = loadout ?? new SurvivorsRunEnemyLoadout();
-            EnsurePatternModules();
+            EnsureRuntimeModules();
             RebuildActivePatterns();
         }
 
@@ -47,68 +47,53 @@ namespace SHIN
                 RebuildActivePatterns();
         }
 
-        private void EnsurePatternModules()
+        private void EnsureRuntimeModules()
         {
             if (_owner == null)
                 _owner = GetComponent<SurvivorsRunUnitBase>();
-            if (_attack == null)
-                _attack = GetComponent<SurvivorsRunAttack>();
-
-            _contactPattern = GetComponent<SurvivorsRunContactPattern>();
-            if (_contactPattern == null)
-                _contactPattern = gameObject.AddComponent<SurvivorsRunContactPattern>();
-
-            _contactPattern.Setup(_owner, _attack);
 
             if (GetComponent<SurvivorsRunEnemyChase>() == null)
                 gameObject.AddComponent<SurvivorsRunEnemyChase>();
 
-            _patternModules = GetComponents<SurvivorsRunAttackPatternBase>();
-            for (var i = 0; i < _patternModules.Length; i++)
-            {
-                if (_patternModules[i] != null)
-                    _patternModules[i].Setup(_owner, _attack);
-            }
+            EnsureContactDamageObject();
+        }
+
+        private void EnsureContactDamageObject()
+        {
+            _contactDamageObject = GetComponent<SurvivorsRunDamageObject>();
+            if (_contactDamageObject == null)
+                _contactDamageObject = gameObject.AddComponent<SurvivorsRunDamageObject>();
         }
 
         private void RebuildActivePatterns()
         {
             _loadout.GetEffectivePatterns(_activePatterns);
-            SyncPatternModules();
+            SyncContactDamageObject();
 
             Debug.Log(
                 $"[EnemyLoadout] {_owner?.Tid ?? name}: patterns={string.Join(", ", _activePatterns)}",
                 this);
         }
 
-        private void SyncPatternModules()
+        private void SyncContactDamageObject()
         {
-            if (_patternModules == null || _patternModules.Length == 0)
-                EnsurePatternModules();
+            EnsureContactDamageObject();
+            if (_contactDamageObject == null || _owner == null)
+                return;
 
-            for (var i = 0; i < _patternModules.Length; i++)
+            var useContact = _activePatterns.Contains(SURVIVORSRUN_ATTACK_PATTERN.CONTACT);
+            if (!useContact)
             {
-                var module = _patternModules[i];
-                if (module == null)
-                    continue;
-
-                var enabled = _activePatterns.Contains(module.Pattern);
-                module.SetPatternEnabled(enabled);
+                _contactDamageObject.SetDamageEnabled(false);
+                return;
             }
-        }
 
-        /// <summary>
-        /// 접촉 돌진용. Active에 Contact가 있을 때만 시도.
-        /// </summary>
-        public bool TryContactAttack(SurvivorsRunUnitBase target)
-        {
-            if (_contactPattern == null)
-                EnsurePatternModules();
+            var hitCooldown = _owner.AttackSpeed > 0f
+                ? 1f / _owner.AttackSpeed
+                : Mathf.Max(0.05f, _defaultHitCooldown);
 
-            if (_contactPattern == null || !_contactPattern.IsPatternEnabled)
-                return false;
-
-            return _contactPattern.TryAttackTarget(target);
+            _contactDamageObject.Setup(_owner, _owner.Attack, hitCooldown);
+            _contactDamageObject.SetDamageEnabled(true);
         }
 
         public bool UsesOnlyContact()
