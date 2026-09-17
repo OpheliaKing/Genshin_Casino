@@ -128,11 +128,12 @@ namespace SHIN
             EnsureEnemyRuntimeRefs();
             position = ClampToMap(position);
 
-            // 활성 상태로 만들면 한 프레임 부모 원점에 보였다가 텔레포트됨
+            // 비활성 생성 + 월드 좌표를 Instantiate 시점에 넣어 원점 플래시를 막는다.
             var instance = await resourceManager.InstantiateAsync(
                 data.UnitPrefabPath.Trim(),
                 parent: _enemyRoot,
-                startInactive: true);
+                startInactive: true,
+                worldPosition: position);
 
             if (this == null)
             {

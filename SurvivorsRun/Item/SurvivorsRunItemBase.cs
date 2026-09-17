@@ -101,13 +101,17 @@ namespace SHIN
         }
 
         /// <summary>
-        /// 프리팹 경로가 없으면 기본 트리거 원 콜라이더 + DamageObject를 만든다.
+        /// DamagePrefabPath 없이 임시 검증용 히트박스를 만든다.
+        /// Orbit 등 실전 무기는 프리팹 경로를 쓰고, 경로가 없으면 에러 로그 후 생성하지 않는다.
+        /// 생성 오브젝트는 Default 레이어를 유지한다(Unit=피격 전용).
         /// </summary>
         protected SurvivorsRunDamageObject CreateDefaultDamageObject(Transform parent, float radius = 0.35f)
         {
             var go = new GameObject("DamageObject");
             go.transform.SetParent(parent, false);
             go.transform.localPosition = Vector3.zero;
+            // Unit 레이어에 두면 다른 DamageObject의 피격 대상이 되므로 Default 유지.
+            go.layer = 0;
 
             var col = go.AddComponent<CircleCollider2D>();
             col.isTrigger = true;

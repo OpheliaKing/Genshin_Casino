@@ -5,6 +5,8 @@ namespace SHIN
 {
     /// <summary>
     /// 유닛에게 피해를 주는 히트박스.
+    /// 피격 대상은 <see cref="PublicVariable.Layer.Unit"/> 레이어 콜라이더만 인정한다.
+    /// (공격용 DamageObject 콜라이더는 Unit이 아니어야 피격 판정과 분리된다.)
     /// 충돌 시 Owner·진영은 <see cref="SurvivorsRunCombat"/>이 최종 판정한다.
     /// 동일 대상은 <see cref="_hitCooldown"/> 동안 재타격하지 않는다.
     /// </summary>
@@ -17,6 +19,9 @@ namespace SHIN
         private SurvivorsRunUnitBase _owner;
         private readonly Dictionary<SurvivorsRunUnitBase, float> _hitCooldowns = new();
         private readonly List<SurvivorsRunUnitBase> _pruneBuffer = new();
+
+        private static int _unitLayer = int.MinValue;
+        private static bool _unitLayerMissingLogged;
 
         public SurvivorsRunUnitBase Owner => _owner;
         public int Damage => _damage;
@@ -92,6 +97,10 @@ namespace SHIN
             if (_owner == null || _owner.IsDead)
                 return;
 
+            // 피격 판정(Unit)만 인정. 공격용 히트박스·이펙트 콜라이더는 제외.
+            if (!IsUnitHurtbox(other))
+                return;
+
             var target = ResolveUnit(other);
             if (target == null || target.IsDead || target == _owner)
                 return;
@@ -116,6 +125,31 @@ namespace SHIN
                 ? _owner.Manager.TimeScale
                 : 1f;
             return Time.deltaTime * scale;
+        }
+
+        private static bool IsUnitHurtbox(Collider2D other)
+        {
+            var unitLayer = GetUnitLayer();
+            if (unitLayer < 0)
+                return false;
+
+            return other.gameObject.layer == unitLayer;
+        }
+
+        private static int GetUnitLayer()
+        {
+            if (_unitLayer != int.MinValue)
+                return _unitLayer;
+
+            _unitLayer = LayerMask.NameToLayer(PublicVariable.Layer.Unit);
+            if (_unitLayer < 0 && !_unitLayerMissingLogged)
+            {
+                _unitLayerMissingLogged = true;
+                Debug.LogError(
+                    $"[SurvivorsRunDamageObject] '{PublicVariable.Layer.Unit}' 레이어가 없습니다. TagManager를 확인하세요.");
+            }
+
+            return _unitLayer;
         }
 
         private static SurvivorsRunUnitBase ResolveUnit(Collider2D other)

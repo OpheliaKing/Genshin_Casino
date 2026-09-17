@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using UnityEngine;
 
 namespace SHIN
@@ -15,6 +16,7 @@ namespace SHIN
         private readonly List<SurvivorsRunDamageObject> _damageObjects = new();
         private float _orbitRadius = DefaultOrbitRadius;
         private float _orbitSpeedDegrees = DefaultOrbitSpeed;
+        private int _rebuildVersion;
 
         public override void Tick(float dt)
         {
@@ -26,16 +28,54 @@ namespace SHIN
 
         public override void Dispose()
         {
-            _damageObjects.Clear();
+            _rebuildVersion++;
+            ClearDamageObjects();
             _orbitPivot = null;
             base.Dispose();
         }
 
         protected override void RebuildDamageObjects()
         {
+            _rebuildVersion++;
+            _ = RebuildDamageObjectsAsync(_rebuildVersion);
+        }
+
+        private async Task RebuildDamageObjectsAsync(int version)
+        {
             EnsureItemRoot();
             EnsureOrbitPivot();
             ClearDamageObjects();
+
+            if (version != _rebuildVersion)
+                return;
+
+            var path = ItemData != null ? ItemData.DamagePrefabPath : null;
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                Debug.LogError(
+                    $"[SurvivorsRunOrbitItem] DamagePrefabPath가 비어 있습니다. tid={Tid}");
+                return;
+            }
+
+            var resourceManager = GameManager.Instance?.ResourceManager;
+            if (resourceManager == null)
+            {
+                Debug.LogError(
+                    $"[SurvivorsRunOrbitItem] ResourceManager가 없어 DamageObject를 생성할 수 없습니다. tid={Tid}");
+                return;
+            }
+
+            var address = path.Trim();
+            var prefab = await resourceManager.LoadAsync<GameObject>(address);
+            if (version != _rebuildVersion)
+                return;
+
+            if (prefab == null)
+            {
+                Debug.LogError(
+                    $"[SurvivorsRunOrbitItem] DamageObject 프리팹 로드 실패. tid={Tid}, path={address}");
+                return;
+            }
 
             var count = ResolveObjectCount();
             var damage = ResolveDamage();
@@ -43,12 +83,30 @@ namespace SHIN
 
             for (var i = 0; i < count; i++)
             {
+                if (version != _rebuildVersion)
+                {
+                    ClearDamageObjects();
+                    return;
+                }
+
                 var angle = (360f / count) * i;
                 var rad = angle * Mathf.Deg2Rad;
                 var local = new Vector3(Mathf.Cos(rad), Mathf.Sin(rad), 0f) * _orbitRadius;
 
-                var damageObject = CreateDefaultDamageObject(_orbitPivot, radius: 0.4f);
-                damageObject.transform.localPosition = local;
+                var instance = Object.Instantiate(prefab, _orbitPivot, false);
+                instance.transform.localPosition = local;
+                instance.transform.localRotation = Quaternion.identity;
+                instance.SetActive(true);
+
+                var damageObject = instance.GetComponent<SurvivorsRunDamageObject>();
+                if (damageObject == null)
+                {
+                    Debug.LogError(
+                        $"[SurvivorsRunOrbitItem] 프리팹에 SurvivorsRunDamageObject가 없습니다. tid={Tid}, path={address}");
+                    Object.Destroy(instance);
+                    continue;
+                }
+
                 damageObject.Setup(Owner, damage, hitCooldown);
                 _damageObjects.Add(damageObject);
             }
@@ -70,8 +128,10 @@ namespace SHIN
             for (var i = 0; i < _damageObjects.Count; i++)
             {
                 var damageObject = _damageObjects[i];
-                if (damageObject != null)
-                    Object.Destroy(damageObject.gameObject);
+                if (damageObject == null)
+                    continue;
+
+                Object.Destroy(damageObject.gameObject);
             }
 
             _damageObjects.Clear();

@@ -11,11 +11,13 @@ namespace SHIN
         private SurvivorsRunUnitData _selectedCharacter;
         private GameObject _playerInstance;
         private SurvivorsRunUnitBase _playerUnit;
+        private SurvivorsRunItemDataSO _itemDataSo;
 
         public float TimeScale => _timeScale;
         public SurvivorsRunCombat Combat => _combat;
         public SurvivorsRunUnitData SelectedCharacter => _selectedCharacter;
         public SurvivorsRunUnitBase PlayerUnit => _playerUnit;
+        public SurvivorsRunItemDataSO ItemDataSo => _itemDataSo;
 
         private void Awake()
         {
@@ -130,7 +132,8 @@ namespace SHIN
             var instance = await resourceManager.InstantiateAsync(
                 data.UnitPrefabPath.Trim(),
                 parent: transform,
-                startInactive: true);
+                startInactive: true,
+                worldPosition: GetPlayerSpawnWorldPosition());
 
             if (this == null)
             {
@@ -163,7 +166,8 @@ namespace SHIN
                     data.UnitSpeed,
                     attackSpeed: 1f);
                 _playerUnit.transform.position = ClampToMap(_playerUnit.transform.position);
-                EnsurePlayerItemController(_playerUnit);
+                var itemController = EnsurePlayerItemController(_playerUnit);
+                await ApplyStartWeaponAsync(data, itemController);
             }
             else
             {
@@ -173,16 +177,62 @@ namespace SHIN
             instance.SetActive(true);
         }
 
-        private static void EnsurePlayerItemController(SurvivorsRunUnitBase playerUnit)
+        private async Task EnsureItemDataSoAsync()
+        {
+            if (_itemDataSo != null)
+                return;
+
+            var resourceManager = GameManager.Instance?.ResourceManager;
+            if (resourceManager == null)
+            {
+                Debug.LogError("[SurvivorsRunManager] ResourceManager가 없어 ItemDataSO를 로드할 수 없습니다.");
+                return;
+            }
+
+            _itemDataSo = await resourceManager.LoadAsync<SurvivorsRunItemDataSO>(
+                PublicVariable.Address.SurvivorsRunItemDataSO);
+
+            if (_itemDataSo == null)
+                Debug.LogError("[SurvivorsRunManager] SurvivorsRunItemDataSO 로드에 실패했습니다.");
+        }
+
+        private async Task ApplyStartWeaponAsync(
+            SurvivorsRunUnitData data,
+            SurvivorsRunPlayerItemController itemController)
+        {
+            if (data == null || itemController == null)
+                return;
+
+            if (string.IsNullOrWhiteSpace(data.StartWeaponTid))
+                return;
+
+            await EnsureItemDataSoAsync();
+            if (_itemDataSo == null)
+                return;
+
+            var itemData = _itemDataSo.GetByTid(data.StartWeaponTid.Trim());
+            if (itemData == null)
+            {
+                Debug.LogWarning(
+                    $"[SurvivorsRunManager] 시작 무기를 찾지 못했습니다: {data.StartWeaponTid} ({data.UnitId})");
+                return;
+            }
+
+            itemController.AddOrStackItem(itemData);
+        }
+
+        private static SurvivorsRunPlayerItemController EnsurePlayerItemController(
+            SurvivorsRunUnitBase playerUnit)
         {
             if (playerUnit == null)
-                return;
+                return null;
 
             var controller = playerUnit.GetComponent<SurvivorsRunPlayerItemController>();
             if (controller == null)
                 controller = playerUnit.gameObject.AddComponent<SurvivorsRunPlayerItemController>();
 
             controller.BindOwner(playerUnit);
+            return controller;
         }
 
         private void ReleasePlayerInstance()

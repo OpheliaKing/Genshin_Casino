@@ -40,6 +40,11 @@ namespace SHIN
         public float UnitSpeed => _unitSpeed;
 
         [SerializeField]
+        [Tooltip("플레이어 전용. 시작 시 장착할 무기 ItemData tid (예: item_orbit_001). 몬스터는 비운다.")]
+        private string _startWeaponTid;
+        public string StartWeaponTid => _startWeaponTid;
+
+        [SerializeField]
         [Tooltip("몬스터 전용. 비우면 돌진(Contact)만. 플레이어 데이터는 비워 둔다.")]
         private SurvivorsRunEnemyLoadout _enemyLoadout = new();
         public SurvivorsRunEnemyLoadout EnemyLoadout => _enemyLoadout;

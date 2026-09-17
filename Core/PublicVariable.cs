@@ -5,6 +5,15 @@ namespace SHIN
     /// </summary>
     public static class PublicVariable
     {
+        /// <summary>
+        /// Unity Layer 이름. TagManager와 동일해야 한다.
+        /// Unit = 캐릭터 피격(몸) 판정. DamageObject 프리팹은 Unit에 두지 않는다.
+        /// </summary>
+        public static class Layer
+        {
+            public const string Unit = "Unit";
+        }
+
         public static class Label
         {
             public const string UI = "UI";

@@ -56,10 +56,16 @@ namespace SHIN
             onComplete?.Invoke(result);
         }
 
+        /// <summary>
+        /// Addressables 프리팹을 생성한다.
+        /// startInactive면 Load 후 동기 Instantiate → 즉시 비활성화해서
+        /// InstantiateAsync 완료~비활성 사이 한 프레임 노출을 막는다.
+        /// </summary>
         public async Task<GameObject> InstantiateAsync(
             string address,
             Transform parent = null,
-            bool startInactive = true)
+            bool startInactive = true,
+            Vector3? worldPosition = null)
         {
             if (string.IsNullOrEmpty(address))
             {
@@ -67,29 +73,28 @@ namespace SHIN
                 return null;
             }
 
-            var handle = Addressables.InstantiateAsync(address, parent);
-
-            // await 전에 Completed로 꺼 두면, 완료 직후 한 프레임 노출을 줄인다.
-            if (startInactive)
+            // InstantiateAsync는 완료 시점에 이미 active라 Completed/await 사이에 한 프레임 보일 수 있다.
+            // 스폰 플래시 방지: 에셋 로드 후 동기 Instantiate → 즉시 SetActive(false).
+            var prefab = await LoadAsync<GameObject>(address);
+            if (prefab == null)
             {
-                handle.Completed += op =>
-                {
-                    if (op.Status == AsyncOperationStatus.Succeeded && op.Result != null)
-                        op.Result.SetActive(false);
-                };
-            }
-
-            var instance = await handle.Task;
-
-            if (handle.Status != AsyncOperationStatus.Succeeded || instance == null)
-            {
-                Debug.LogError($"[ResourceManager] 생성 실패: {address}");
+                Debug.LogError($"[ResourceManager] 생성 실패(프리팹 로드): {address}");
                 return null;
             }
 
-            if (startInactive && instance.activeSelf)
+            var instance = UnityEngine.Object.Instantiate(prefab);
+            if (startInactive)
                 instance.SetActive(false);
 
+            if (parent != null)
+                instance.transform.SetParent(parent, false);
+
+            if (worldPosition.HasValue)
+                instance.transform.position = worldPosition.Value;
+            else
+                instance.transform.localPosition = Vector3.zero;
+
+            instance.transform.localRotation = Quaternion.identity;
             return instance;
         }
 
@@ -154,7 +159,10 @@ namespace SHIN
             if (instance == null)
                 return;
 
-            Addressables.ReleaseInstance(instance);
+            // Addressables.InstantiateAsync로 만든 인스턴스만 true.
+            // Load+Instantiate 경로면 Destroy로 정리한다.
+            if (!Addressables.ReleaseInstance(instance))
+                UnityEngine.Object.Destroy(instance);
         }
 
         public void ReleaseLabel(string label)
