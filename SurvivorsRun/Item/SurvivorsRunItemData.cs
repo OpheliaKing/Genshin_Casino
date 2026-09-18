@@ -41,6 +41,11 @@ namespace SHIN
         public float HitCooldown => _hitCooldown;
 
         [SerializeField]
+        [Tooltip("발동 쿨타임(초). Pulse·Projectile 등 공격 주기. Orbit처럼 상주 히트박스는 사용하지 않음.")]
+        private float _fireCooldown = 1f;
+        public float FireCooldown => _fireCooldown;
+
+        [SerializeField]
         [Tooltip("중첩 1일 때 생성할 DamageObject 개수(Orbit 등).")]
         private int _baseObjectCount = 1;
         public int BaseObjectCount => _baseObjectCount;

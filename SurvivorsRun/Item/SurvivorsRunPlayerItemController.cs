@@ -119,7 +119,8 @@ namespace SHIN
             return pattern switch
             {
                 SURVIVORSRUN_ATTACK_PATTERN.ORBIT => new SurvivorsRunOrbitItem(),
-                // PULSE / AURA / PROJECTILE: 이후 DamageObject 스폰형으로 추가
+                SURVIVORSRUN_ATTACK_PATTERN.PULSE => new SurvivorsRunPulseItem(),
+                // AURA / PROJECTILE: 이후 추가
                 _ => null,
             };
         }

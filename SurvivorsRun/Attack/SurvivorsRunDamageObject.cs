@@ -10,8 +10,12 @@ namespace SHIN
     /// 충돌 시 Owner·진영은 <see cref="SurvivorsRunCombat"/>이 최종 판정한다.
     /// 동일 대상은 <see cref="_hitCooldown"/> 동안 재타격하지 않는다.
     /// </summary>
+    [RequireComponent(typeof(Rigidbody2D))]
+    [RequireComponent(typeof(CircleCollider2D))]
     public class SurvivorsRunDamageObject : MonoBehaviour
     {
+        private const float DefaultColliderRadius = 0.4f;
+
         [SerializeField] private int _damage = 1;
         [SerializeField] private float _hitCooldown = 0.5f;
         [SerializeField] private bool _damageEnabled = true;
@@ -28,8 +32,50 @@ namespace SHIN
         public float HitCooldown => _hitCooldown;
         public bool IsDamageEnabled => _damageEnabled;
 
+        private void Reset()
+        {
+            EnsurePhysicsComponents();
+        }
+
+        private void Awake()
+        {
+            EnsurePhysicsComponents();
+        }
+
+#if UNITY_EDITOR
+        private void OnValidate()
+        {
+            EnsurePhysicsComponents();
+        }
+#endif
+
+        /// <summary>
+        /// DamageObject 추가 시 Rigidbody2D·CircleCollider2D가 없으면 붙이고,
+        /// 트리거/Kinematic 기본값을 맞춘다.
+        /// </summary>
+        public void EnsurePhysicsComponents()
+        {
+            var body = GetComponent<Rigidbody2D>();
+            if (body == null)
+                body = gameObject.AddComponent<Rigidbody2D>();
+
+            body.bodyType = RigidbodyType2D.Kinematic;
+            body.simulated = true;
+            body.useFullKinematicContacts = true;
+            body.gravityScale = 0f;
+
+            var col = GetComponent<CircleCollider2D>();
+            if (col == null)
+                col = gameObject.AddComponent<CircleCollider2D>();
+
+            col.isTrigger = true;
+            if (col.radius <= 0f)
+                col.radius = DefaultColliderRadius;
+        }
+
         public void Setup(SurvivorsRunUnitBase owner, int damage, float hitCooldown)
         {
+            EnsurePhysicsComponents();
             _owner = owner;
             _damage = Mathf.Max(0, damage);
             _hitCooldown = Mathf.Max(0f, hitCooldown);

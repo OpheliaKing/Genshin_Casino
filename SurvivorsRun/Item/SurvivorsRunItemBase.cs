@@ -94,6 +94,12 @@ namespace SHIN
             return _itemData != null ? Mathf.Max(0f, _itemData.HitCooldown) : 0.5f;
         }
 
+        /// <summary>Pulse·Projectile 발동 주기. HitCooldown(재타격 면역)과 별개.</summary>
+        protected float ResolveFireCooldown()
+        {
+            return _itemData != null ? Mathf.Max(0f, _itemData.FireCooldown) : 1f;
+        }
+
         protected int ResolveObjectCount()
         {
             var baseCount = _itemData != null ? Mathf.Max(1, _itemData.BaseObjectCount) : 1;
@@ -104,6 +110,7 @@ namespace SHIN
         /// DamagePrefabPath 없이 임시 검증용 히트박스를 만든다.
         /// Orbit 등 실전 무기는 프리팹 경로를 쓰고, 경로가 없으면 에러 로그 후 생성하지 않는다.
         /// 생성 오브젝트는 Default 레이어를 유지한다(Unit=피격 전용).
+        /// Rigidbody2D·CircleCollider2D는 <see cref="SurvivorsRunDamageObject"/> 추가 시 자동 부착된다.
         /// </summary>
         protected SurvivorsRunDamageObject CreateDefaultDamageObject(Transform parent, float radius = 0.35f)
         {
@@ -113,16 +120,11 @@ namespace SHIN
             // Unit 레이어에 두면 다른 DamageObject의 피격 대상이 되므로 Default 유지.
             go.layer = 0;
 
-            var col = go.AddComponent<CircleCollider2D>();
-            col.isTrigger = true;
-            col.radius = radius;
-
-            var body = go.AddComponent<Rigidbody2D>();
-            body.bodyType = RigidbodyType2D.Kinematic;
-            body.simulated = true;
-            body.useFullKinematicContacts = true;
-
             var damageObject = go.AddComponent<SurvivorsRunDamageObject>();
+            var col = go.GetComponent<CircleCollider2D>();
+            if (col != null)
+                col.radius = radius;
+
             damageObject.Setup(_owner, ResolveDamage(), ResolveHitCooldown());
             return damageObject;
         }
