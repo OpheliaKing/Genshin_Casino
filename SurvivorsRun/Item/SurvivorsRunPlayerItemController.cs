@@ -121,7 +121,7 @@ namespace SHIN
                 SURVIVORSRUN_ATTACK_PATTERN.ORBIT => new SurvivorsRunOrbitItem(),
                 SURVIVORSRUN_ATTACK_PATTERN.PULSE => new SurvivorsRunPulseItem(),
                 SURVIVORSRUN_ATTACK_PATTERN.AURA => new SurvivorsRunAuraItem(),
-                // PROJECTILE: 이후 추가
+                SURVIVORSRUN_ATTACK_PATTERN.PROJECTILE => new SurvivorsRunProjectileItem(),
                 _ => null,
             };
         }

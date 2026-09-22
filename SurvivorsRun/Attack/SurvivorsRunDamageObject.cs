@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -31,6 +32,9 @@ namespace SHIN
         public int Damage => _damage;
         public float HitCooldown => _hitCooldown;
         public bool IsDamageEnabled => _damageEnabled;
+
+        /// <summary>피해 적용에 성공했을 때 (Projectile 관통/소멸 판정 등).</summary>
+        public event Action<SurvivorsRunUnitBase> DamageApplied;
 
         private void Reset()
         {
@@ -163,6 +167,8 @@ namespace SHIN
 
             if (_hitCooldown > 0f)
                 _hitCooldowns[target] = _hitCooldown;
+
+            DamageApplied?.Invoke(target);
         }
 
         private float GetDeltaTime()
