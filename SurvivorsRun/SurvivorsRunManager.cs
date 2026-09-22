@@ -12,12 +12,14 @@ namespace SHIN
         private GameObject _playerInstance;
         private SurvivorsRunUnitBase _playerUnit;
         private SurvivorsRunItemDataSO _itemDataSo;
+        private readonly SurvivorsRunPlayerInfo _playerInfo = new();
 
         public float TimeScale => _timeScale;
         public SurvivorsRunCombat Combat => _combat;
         public SurvivorsRunUnitData SelectedCharacter => _selectedCharacter;
         public SurvivorsRunUnitBase PlayerUnit => _playerUnit;
         public SurvivorsRunItemDataSO ItemDataSo => _itemDataSo;
+        public SurvivorsRunPlayerInfo PlayerInfo => _playerInfo;
 
         private void Awake()
         {
@@ -167,7 +169,9 @@ namespace SHIN
                     attackSpeed: 1f);
                 _playerUnit.transform.position = ClampToMap(_playerUnit.transform.position);
                 var itemController = EnsurePlayerItemController(_playerUnit);
-                await ApplyStartWeaponAsync(data, itemController);
+                _playerInfo.Reset();
+                _playerInfo.BindItemController(itemController);
+                await ApplyStartWeaponAsync(data);
             }
             else
             {
@@ -196,11 +200,9 @@ namespace SHIN
                 Debug.LogError("[SurvivorsRunManager] SurvivorsRunItemDataSO 로드에 실패했습니다.");
         }
 
-        private async Task ApplyStartWeaponAsync(
-            SurvivorsRunUnitData data,
-            SurvivorsRunPlayerItemController itemController)
+        private async Task ApplyStartWeaponAsync(SurvivorsRunUnitData data)
         {
-            if (data == null || itemController == null)
+            if (data == null)
                 return;
 
             if (string.IsNullOrWhiteSpace(data.StartWeaponTid))
@@ -218,7 +220,7 @@ namespace SHIN
                 return;
             }
 
-            itemController.AddOrStackItem(itemData);
+            _playerInfo.AddItem(itemData);
         }
 
         private static SurvivorsRunPlayerItemController EnsurePlayerItemController(
@@ -237,18 +239,14 @@ namespace SHIN
 
         private void ReleasePlayerInstance()
         {
-            if (_playerUnit != null)
-            {
-                var itemController = _playerUnit.GetComponent<SurvivorsRunPlayerItemController>();
-                itemController?.ClearAll();
-            }
-
             StopCameraFollow();
             SetPlayerControlEnabled(false);
 
             if (_playerInstance == null)
             {
                 _playerUnit = null;
+                _playerInfo.BindItemController(null);
+                _playerInfo.Reset();
                 return;
             }
 
@@ -260,6 +258,8 @@ namespace SHIN
 
             _playerInstance = null;
             _playerUnit = null;
+            _playerInfo.BindItemController(null);
+            _playerInfo.Reset();
         }
 
         private void OnDestroy()
