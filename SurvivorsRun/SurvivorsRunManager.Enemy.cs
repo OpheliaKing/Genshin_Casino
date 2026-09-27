@@ -11,9 +11,12 @@ namespace SHIN
     {
         [SerializeField] private Camera _runCamera;
         [SerializeField] private Transform _enemyRoot;
-        [SerializeField] private float _spawnOutsidePadding = 1.5f;
-        [SerializeField] private float _spawnRingThickness = 3f;
-        [SerializeField] private int _spawnPositionMaxAttempts = 12;
+        [SerializeField]
+        [Tooltip("우측 스폰 시 카메라/맵 오른쪽에서 얼마나 밖으로 둘지.")]
+        private float _rightSpawnPadding = 1.5f;
+        [SerializeField]
+        [Tooltip("우측 스폰 Y 랜덤 시 화면 상하 inset.")]
+        private float _rightSpawnVerticalInset = 0.5f;
 
         private SurvivorsRunEnemySO _enemySo;
         private SurvivorsRunEnemySpawner _enemySpawner;
@@ -126,7 +129,8 @@ namespace SHIN
             }
 
             EnsureEnemyRuntimeRefs();
-            position = ClampToMap(position);
+            // 좌측 누수를 위해 X min clamp는 스폰 시에도 강제하지 않는다. Y만 맞춤.
+            position = ClampEnemyMarchPosition(position);
 
             // 비활성 생성 + 월드 좌표를 Instantiate 시점에 넣어 원점 플래시를 막는다.
             var instance = await resourceManager.InstantiateAsync(
@@ -186,39 +190,127 @@ namespace SHIN
             return await SpawnEnemyAsync(GetEnemyData(unitId), position);
         }
 
-        public bool TryGetSpawnPositionOutsideCamera(out Vector3 position)
+        /// <summary>
+        /// 고정 디펜스 스폰: 화면/맵 오른쪽 + Y 랜덤.
+        /// </summary>
+        public bool TryGetEnemySpawnPosition(out Vector3 position)
         {
             position = default;
             EnsureEnemyRuntimeRefs();
 
-            if (_playerUnit == null)
-                return false;
-
             var cam = _runCamera != null ? _runCamera : Camera.main;
-            if (cam == null)
+            if (cam == null && _activeMap == null)
                 return false;
 
-            var origin = _playerUnit.transform.position;
-            GetCameraHalfExtents(cam, out var halfW, out var halfH);
+            float minY;
+            float maxY;
+            float spawnX;
 
-            var minRadius = Mathf.Max(halfW, halfH) + Mathf.Max(0f, _spawnOutsidePadding);
-            var maxRadius = minRadius + Mathf.Max(0.1f, _spawnRingThickness);
-
-            for (var i = 0; i < _spawnPositionMaxAttempts; i++)
+            if (cam != null)
             {
-                var angle = Random.Range(0f, Mathf.PI * 2f);
-                var radius = Random.Range(minRadius, maxRadius);
-                var candidate = origin + new Vector3(Mathf.Cos(angle) * radius, Mathf.Sin(angle) * radius, 0f);
-                candidate = ClampToMap(candidate);
-
-                if (IsOutsideCameraView(candidate, cam, _spawnOutsidePadding * 0.25f))
+                GetCameraHalfExtents(cam, out var halfW, out var halfH);
+                var camPos = cam.transform.position;
+                var inset = Mathf.Max(0f, _rightSpawnVerticalInset);
+                minY = camPos.y - halfH + inset;
+                maxY = camPos.y + halfH - inset;
+                if (minY > maxY)
                 {
-                    position = candidate;
-                    return true;
+                    minY = camPos.y - halfH;
+                    maxY = camPos.y + halfH;
+                }
+
+                spawnX = camPos.x + halfW + Mathf.Max(0.1f, _rightSpawnPadding);
+            }
+            else
+            {
+                _activeMap.GetClampLocal(out var minLocal, out var maxLocal);
+                var minWorld = _activeMap.transform.TransformPoint(new Vector3(minLocal.x, minLocal.y, 0f));
+                var maxWorld = _activeMap.transform.TransformPoint(new Vector3(maxLocal.x, maxLocal.y, 0f));
+                minY = Mathf.Min(minWorld.y, maxWorld.y);
+                maxY = Mathf.Max(minWorld.y, maxWorld.y);
+                spawnX = Mathf.Max(minWorld.x, maxWorld.x) + Mathf.Max(0.1f, _rightSpawnPadding);
+            }
+
+            if (_activeMap != null)
+            {
+                _activeMap.GetClampLocal(out var minLocal, out var maxLocal);
+                var mapMin = _activeMap.transform.TransformPoint(new Vector3(minLocal.x, minLocal.y, 0f));
+                var mapMax = _activeMap.transform.TransformPoint(new Vector3(maxLocal.x, maxLocal.y, 0f));
+                var mapMinY = Mathf.Min(mapMin.y, mapMax.y);
+                var mapMaxY = Mathf.Max(mapMin.y, mapMax.y);
+                minY = Mathf.Max(minY, mapMinY);
+                maxY = Mathf.Min(maxY, mapMaxY);
+                if (minY > maxY)
+                {
+                    minY = mapMinY;
+                    maxY = mapMaxY;
                 }
             }
 
-            return false;
+            var y = Random.Range(minY, maxY);
+            position = new Vector3(spawnX, y, 0f);
+            position = ClampEnemyMarchPosition(position);
+            // Clamp가 X를 맵 max 안으로 당기면 화면 안 스폰이 될 수 있어, 우측은 다시 밖으로 둔다.
+            if (cam != null)
+            {
+                GetCameraHalfExtents(cam, out var halfW, out _);
+                var rightEdge = cam.transform.position.x + halfW + Mathf.Max(0.1f, _rightSpawnPadding);
+                if (position.x < rightEdge)
+                    position.x = rightEdge;
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// 행진 적 위치: Y(및 X max)만 제한. X min은 누수를 위해 막지 않는다.
+        /// </summary>
+        public Vector3 ClampEnemyMarchPosition(Vector3 position)
+        {
+            if (_activeMap == null)
+                return ClampToMap(position);
+
+            _activeMap.GetClampLocal(out var minLocal, out var maxLocal);
+            var local = _activeMap.transform.InverseTransformPoint(position);
+            local.y = Mathf.Clamp(local.y, minLocal.y, maxLocal.y);
+            local.x = Mathf.Min(local.x, maxLocal.x);
+            local.z = 0f;
+            return _activeMap.transform.TransformPoint(local);
+        }
+
+        /// <summary>맵 왼쪽 경계(로컬 min X) 이하면 누수.</summary>
+        public bool HasEnemyLeaked(Vector3 worldPosition)
+        {
+            if (_activeMap == null)
+                return false;
+
+            _activeMap.GetClampLocal(out var minLocal, out _);
+            var local = _activeMap.transform.InverseTransformPoint(worldPosition);
+            return local.x <= minLocal.x;
+        }
+
+        /// <summary>적이 왼쪽을 통과했을 때 라이프 감소 후 제거.</summary>
+        public void NotifyEnemyLeaked(SurvivorsRunUnitBase enemy)
+        {
+            if (enemy == null)
+                return;
+
+            var life = _playerInfo.LoseLife(1);
+            Debug.Log($"[SurvivorsRun] 적 누수 → Life={life} (enemy={enemy.Tid})");
+
+            _activeEnemies.Remove(enemy);
+
+            var resourceManager = GameManager.Instance?.ResourceManager;
+            if (resourceManager != null)
+                resourceManager.ReleaseInstance(enemy.gameObject);
+            else if (enemy.gameObject != null)
+                Destroy(enemy.gameObject);
+
+            if (life <= 0)
+            {
+                StopEnemySpawning();
+                Debug.Log("[SurvivorsRun] Life 0 — 세션 패배(UI는 이후 연결).");
+            }
         }
 
         public Vector3 ClampToMap(Vector3 position)
@@ -226,9 +318,7 @@ namespace SHIN
             if (_activeMap != null)
                 return _activeMap.ClampPosition(position);
 
-            // 맵 미생성 폴백: 씬에 남은 레거시 Bounds가 있으면 사용
-            var legacyBounds = FindFirstObjectByType<SurvivorsRunMapBounds>();
-            return legacyBounds != null ? legacyBounds.ClampPosition(position) : position;
+            return position;
         }
 
         public void PruneInactiveEnemies()
@@ -299,13 +389,6 @@ namespace SHIN
             var dist = Mathf.Abs(cam.transform.position.z);
             halfH = Mathf.Tan(cam.fieldOfView * 0.5f * Mathf.Deg2Rad) * dist;
             halfW = halfH * cam.aspect;
-        }
-
-        private static bool IsOutsideCameraView(Vector3 worldPos, Camera cam, float padding)
-        {
-            GetCameraHalfExtents(cam, out var halfW, out var halfH);
-            var local = worldPos - cam.transform.position;
-            return Mathf.Abs(local.x) > halfW + padding || Mathf.Abs(local.y) > halfH + padding;
         }
     }
 }

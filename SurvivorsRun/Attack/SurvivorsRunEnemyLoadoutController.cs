@@ -57,8 +57,8 @@ namespace SHIN
             if (_owner == null)
                 _owner = GetComponent<SurvivorsRunUnitBase>();
 
-            if (GetComponent<SurvivorsRunEnemyChase>() == null)
-                gameObject.AddComponent<SurvivorsRunEnemyChase>();
+            if (GetComponent<SurvivorsRunEnemyMarch>() == null)
+                gameObject.AddComponent<SurvivorsRunEnemyMarch>();
 
             ResolveContactDamageObject();
         }

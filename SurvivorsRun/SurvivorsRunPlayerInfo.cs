@@ -23,14 +23,18 @@ namespace SHIN
         private readonly List<SurvivorsRunPlayerOwnedItem> _ownedItems = new();
         private SurvivorsRunPlayerItemController _itemController;
 
+        public const int DefaultLife = 3;
+
         public int Exp { get; private set; }
         public int Level { get; private set; } = 1;
         public int KillCount { get; private set; }
+        public int Life { get; private set; } = DefaultLife;
         public IReadOnlyList<SurvivorsRunPlayerOwnedItem> OwnedItems => _ownedItems;
 
         public event Action<int, int> ExpChanged;      // current, toNext
         public event Action<int> LevelChanged;
         public event Action<int> KillCountChanged;
+        public event Action<int> LifeChanged;
         public event Action OwnedItemsChanged;
 
         public void BindItemController(SurvivorsRunPlayerItemController itemController)
@@ -44,13 +48,26 @@ namespace SHIN
             Exp = 0;
             Level = 1;
             KillCount = 0;
+            Life = DefaultLife;
             _ownedItems.Clear();
             _itemController?.ClearAll();
 
             ExpChanged?.Invoke(Exp, GetExpToNextLevel());
             LevelChanged?.Invoke(Level);
             KillCountChanged?.Invoke(KillCount);
+            LifeChanged?.Invoke(Life);
             OwnedItemsChanged?.Invoke();
+        }
+
+        /// <summary>좌측 누수 등으로 라이프를 깎는다. 남은 라이프를 반환한다.</summary>
+        public int LoseLife(int amount = 1)
+        {
+            if (amount <= 0)
+                return Life;
+
+            Life = Mathf.Max(0, Life - amount);
+            LifeChanged?.Invoke(Life);
+            return Life;
         }
 
         public void AddKill(int amount = 1)

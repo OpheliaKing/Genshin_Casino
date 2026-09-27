@@ -4,7 +4,7 @@ namespace SHIN
 {
     /// <summary>
     /// 맵/세션에 하나 두는 적 스포너.
-    /// 주기적으로 Manager에 카메라 밖+clamp 스폰을 요청한다.
+    /// 주기적으로 Manager에 우측 스폰을 요청한다.
     /// </summary>
     public class SurvivorsRunEnemySpawner : MonoBehaviour
     {
@@ -40,6 +40,9 @@ namespace SHIN
             if (_manager.PlayerUnit == null || _manager.PlayerUnit.IsDead)
                 return;
 
+            if (_manager.PlayerInfo != null && _manager.PlayerInfo.Life <= 0)
+                return;
+
             _manager.PruneInactiveEnemies();
 
             _spawnCooldown -= Time.deltaTime * _manager.TimeScale;
@@ -61,7 +64,7 @@ namespace SHIN
             _spawnInFlight = true;
             try
             {
-                if (!_manager.TryGetSpawnPositionOutsideCamera(out var position))
+                if (!_manager.TryGetEnemySpawnPosition(out var position))
                     return;
 
                 var data = ResolveEnemyData();

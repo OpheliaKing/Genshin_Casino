@@ -50,6 +50,21 @@ namespace SHIN
         private int _baseObjectCount = 1;
         public int BaseObjectCount => _baseObjectCount;
 
+        [SerializeField]
+        [Tooltip("Projectile 탄속. PROJECTILE 패턴에서만 사용. 0 이하면 런타임 기본값.")]
+        private float _projectileSpeed = 10f;
+        public float ProjectileSpeed => _projectileSpeed;
+
+        [SerializeField]
+        [Tooltip("Projectile 수명(초). PROJECTILE 패턴에서만 사용. 0 이하면 런타임 기본값.")]
+        private float _projectileLifetime = 2.5f;
+        public float ProjectileLifetime => _projectileLifetime;
+
+        [SerializeField]
+        [Tooltip("Projectile 조준 사거리. PROJECTILE 패턴에서만 사용. 0 이하면 런타임 기본값.")]
+        private float _maxRange = 12f;
+        public float MaxRange => _maxRange;
+
         public bool HasAttackPattern =>
             _itemType == SURVIVORSRUN_ITEM_TYPE.WEAPON &&
             _attackPattern != SURVIVORSRUN_ATTACK_PATTERN.NONE &&

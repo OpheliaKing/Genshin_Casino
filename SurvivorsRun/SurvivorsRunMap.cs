@@ -124,6 +124,27 @@ namespace SHIN
             return transform.position;
         }
 
+        /// <summary>맵 clamp 영역의 월드 중심. 카메라 고정용.</summary>
+        public Vector3 GetClampCenterWorld(float worldZ = 0f)
+        {
+            EnsureClampCache();
+            var local = new Vector3(
+                (_clampMinLocal.x + _clampMaxLocal.x) * 0.5f,
+                (_clampMinLocal.y + _clampMaxLocal.y) * 0.5f,
+                0f);
+            var world = transform.TransformPoint(local);
+            world.z = worldZ;
+            return world;
+        }
+
+        /// <summary>맵 clamp 로컬 min/max (읽기용).</summary>
+        public void GetClampLocal(out Vector2 minLocal, out Vector2 maxLocal)
+        {
+            EnsureClampCache();
+            minLocal = _clampMinLocal;
+            maxLocal = _clampMaxLocal;
+        }
+
         /// <summary>자식 Tilemap cellBounds로 수동 clamp를 채운다.</summary>
         [ContextMenu("Refresh Clamp From Tilemap")]
         public void RefreshClampFromTilemap()

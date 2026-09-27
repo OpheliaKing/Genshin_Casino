@@ -3,7 +3,7 @@ using UnityEngine;
 namespace SHIN
 {
     /// <summary>
-    /// 세션 카메라 follow 바인딩.
+    /// 세션 카메라. 고정 디펜스에서는 follow 없이 맵 기준으로 한 번 스냅한다.
     /// </summary>
     public partial class SurvivorsRunManager
     {
@@ -43,14 +43,20 @@ namespace SHIN
                 _cameraFollow = cam.gameObject.AddComponent<SurvivorsRunCameraFollow>();
         }
 
-        private void BindCameraToPlayer()
+        /// <summary>플레이어를 따라가지 않고, 맵/스폰 기준으로 카메라를 고정한다.</summary>
+        private void BindCameraFixed()
         {
             EnsureCameraFollow();
             if (_cameraFollow == null)
                 return;
 
-            var target = _playerUnit != null ? _playerUnit.transform : null;
-            _cameraFollow.Bind(target, _activeMap, enableFollow: target != null);
+            _cameraFollow.Bind(_playerUnit != null ? _playerUnit.transform : null, _activeMap, enableFollow: false);
+
+            var snapWorld = GetPlayerSpawnWorldPosition();
+            if (_activeMap != null)
+                snapWorld = _activeMap.GetClampCenterWorld(snapWorld.z);
+
+            _cameraFollow.SnapToWorld(snapWorld);
         }
 
         private void StopCameraFollow()

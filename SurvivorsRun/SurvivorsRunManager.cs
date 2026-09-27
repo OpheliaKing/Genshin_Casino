@@ -98,15 +98,15 @@ namespace SHIN
                 _characterSelectUI = null;
             }
 
-            // 맵 → 플레이어(맵 스폰 위치) → 조작/적 스폰
+            // 고정 디펜스: 맵 → 플레이어 고정 스폰 → 카메라 고정 → 이동조작 OFF → 적 스폰
             EnableInputMap(InputManager.ActionMapName.SurvivorsRun);
             await EnsureMapAsync();
             await SpawnSelectedCharacterAsync(data);
 
             if (_playerUnit != null)
             {
-                BindCameraToPlayer();
-                SetPlayerControlEnabled(true);
+                BindCameraFixed();
+                SetPlayerControlEnabled(false);
                 await StartEnemySpawningAsync();
             }
         }

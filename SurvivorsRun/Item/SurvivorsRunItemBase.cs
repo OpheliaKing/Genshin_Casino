@@ -106,6 +106,30 @@ namespace SHIN
             return baseCount * _stack;
         }
 
+        /// <summary>Projectile 탄속. SO 값이 없으면 기본 10.</summary>
+        protected float ResolveProjectileSpeed()
+        {
+            if (_itemData != null && _itemData.ProjectileSpeed > 0f)
+                return _itemData.ProjectileSpeed;
+            return 10f;
+        }
+
+        /// <summary>Projectile 수명(초). SO 값이 없으면 기본 2.5.</summary>
+        protected float ResolveProjectileLifetime()
+        {
+            if (_itemData != null && _itemData.ProjectileLifetime > 0f)
+                return _itemData.ProjectileLifetime;
+            return 2.5f;
+        }
+
+        /// <summary>Projectile 조준 사거리. SO 값이 없으면 기본 12.</summary>
+        protected float ResolveMaxRange()
+        {
+            if (_itemData != null && _itemData.MaxRange > 0f)
+                return _itemData.MaxRange;
+            return 12f;
+        }
+
         /// <summary>
         /// DamagePrefabPath 없이 임시 검증용 히트박스를 만든다.
         /// Orbit 등 실전 무기는 프리팹 경로를 쓰고, 경로가 없으면 에러 로그 후 생성하지 않는다.

@@ -9,11 +9,7 @@ namespace SHIN
     /// </summary>
     public class SurvivorsRunProjectileItem : SurvivorsRunItemBase
     {
-        private const float DefaultProjectileSpeed = 10f;
-        private const float DefaultLifetimeLifetime = 2.5f;
         private const float MultiShotSpreadDegrees = 12f;
-        /// <summary>조준 사거리. 이 밖 적은 후보에서 제외.</summary>
-        private const float DefaultMaxRange = 12f;
 
         private GameObject _projectilePrefab;
         private float _cooldownRemaining;
@@ -105,7 +101,7 @@ namespace SHIN
                 return false;
 
             var origin = Owner.transform.position;
-            var target = FindNearestEnemyInRange(origin, DefaultMaxRange);
+            var target = FindNearestEnemyInRange(origin, ResolveMaxRange());
             if (target == null)
                 return false;
 
@@ -117,6 +113,8 @@ namespace SHIN
             var count = ResolveObjectCount();
             var damage = ResolveDamage();
             var hitCooldown = ResolveHitCooldown();
+            var speed = ResolveProjectileSpeed();
+            var lifetime = ResolveProjectileLifetime();
             var parent = ResolveSpawnParent();
 
             for (var i = 0; i < count; i++)
@@ -146,8 +144,8 @@ namespace SHIN
                     damage,
                     hitCooldown,
                     direction,
-                    DefaultProjectileSpeed,
-                    DefaultLifetimeLifetime);
+                    speed,
+                    lifetime);
             }
 
             return true;

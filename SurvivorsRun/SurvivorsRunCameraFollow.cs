@@ -63,6 +63,13 @@ namespace SHIN
             _velocity = Vector3.zero;
         }
 
+        /// <summary>follow 없이 월드 좌표로 한 번 맞춘다. 맵 clamp가 있으면 적용한다.</summary>
+        public void SnapToWorld(Vector3 worldPosition)
+        {
+            transform.position = ResolveDesiredPosition(worldPosition);
+            _velocity = Vector3.zero;
+        }
+
         private void LateUpdate()
         {
             if (!_followEnabled || _target == null)
