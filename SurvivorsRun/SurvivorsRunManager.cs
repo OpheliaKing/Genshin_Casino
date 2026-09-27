@@ -107,6 +107,7 @@ namespace SHIN
             {
                 BindCameraFixed();
                 SetPlayerControlEnabled(false);
+                await EnsureTargetingObjectAsync();
                 await StartEnemySpawningAsync();
             }
         }
@@ -241,6 +242,7 @@ namespace SHIN
         {
             StopCameraFollow();
             SetPlayerControlEnabled(false);
+            ClearAttackTarget();
 
             if (_playerInstance == null)
             {
@@ -266,6 +268,7 @@ namespace SHIN
         {
             ReleaseAllEnemies();
             ReleasePlayerInstance();
+            ReleaseTargetingObject();
             ReleaseMapInstance();
             RestoreLobbyInputMap();
         }

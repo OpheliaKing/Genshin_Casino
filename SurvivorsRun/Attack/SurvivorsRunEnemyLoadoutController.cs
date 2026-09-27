@@ -8,8 +8,9 @@ namespace SHIN
     /// CONTACT → 프리팹에 배치된 Contact <see cref="SurvivorsRunDamageObject"/> 활성/셋업.
     /// 피격은 Unit 레이어 몸 콜라이더, 공격은 Unit이 아닌 자식 히트박스로 분리한다.
     /// 원거리 등은 이후 탄 스폰으로 확장.
+    /// 행진 AI는 <see cref="SurvivorsRunEnemyBase"/>가 담당한다.
     /// </summary>
-    [RequireComponent(typeof(SurvivorsRunUnitBase))]
+    [RequireComponent(typeof(SurvivorsRunEnemyBase))]
     public class SurvivorsRunEnemyLoadoutController : MonoBehaviour
     {
         [SerializeField]
@@ -56,9 +57,6 @@ namespace SHIN
         {
             if (_owner == null)
                 _owner = GetComponent<SurvivorsRunUnitBase>();
-
-            if (GetComponent<SurvivorsRunEnemyMarch>() == null)
-                gameObject.AddComponent<SurvivorsRunEnemyMarch>();
 
             ResolveContactDamageObject();
         }

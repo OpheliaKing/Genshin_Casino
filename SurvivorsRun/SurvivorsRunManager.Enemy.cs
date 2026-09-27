@@ -154,25 +154,27 @@ namespace SHIN
 
             instance.transform.position = position;
 
-            var unit = instance.GetComponent<SurvivorsRunUnitBase>();
-            if (unit == null)
-                unit = instance.GetComponentInChildren<SurvivorsRunUnitBase>(true);
+            var enemy = instance.GetComponent<SurvivorsRunEnemyBase>();
+            if (enemy == null)
+                enemy = instance.GetComponentInChildren<SurvivorsRunEnemyBase>(true);
 
-            if (unit == null)
+            if (enemy == null)
             {
-                Debug.LogWarning("[SurvivorsRunManager] 적 프리팹에 SurvivorsRunUnitBase가 없습니다.");
+                Debug.LogError(
+                    $"[SurvivorsRunManager] 적 프리팹에 SurvivorsRunEnemyBase가 없습니다: {data.UnitPrefabPath}");
                 resourceManager.ReleaseInstance(instance);
                 return null;
             }
 
-            unit.BindManager(this);
-            unit.Setup(
+            enemy.BindManager(this);
+            enemy.Setup(
                 data.UnitId,
                 SURVIVORSRUN_UNIT_TYPE.ENEMY,
                 data.UnitHP,
                 Mathf.RoundToInt(data.UnitAttack),
                 data.UnitSpeed,
                 attackSpeed: 1f);
+            enemy.ResetMarchState();
 
             var loadout = instance.GetComponent<SurvivorsRunEnemyLoadoutController>();
             if (loadout == null)
@@ -180,8 +182,8 @@ namespace SHIN
             loadout.Setup(data.EnemyLoadout);
 
             instance.SetActive(true);
-            _activeEnemies.Add(unit);
-            return unit;
+            _activeEnemies.Add(enemy);
+            return enemy;
         }
 
         public async Task<SurvivorsRunUnitBase> SpawnEnemyAsync(string unitId, Vector3 position)
@@ -298,6 +300,7 @@ namespace SHIN
             var life = _playerInfo.LoseLife(1);
             Debug.Log($"[SurvivorsRun] 적 누수 → Life={life} (enemy={enemy.Tid})");
 
+            ClearAttackTargetIfMatch(enemy);
             _activeEnemies.Remove(enemy);
 
             var resourceManager = GameManager.Instance?.ResourceManager;

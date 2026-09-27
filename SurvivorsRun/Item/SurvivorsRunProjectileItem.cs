@@ -101,7 +101,7 @@ namespace SHIN
                 return false;
 
             var origin = Owner.transform.position;
-            var target = FindNearestEnemyInRange(origin, ResolveMaxRange());
+            var target = ResolveFireTarget(origin, ResolveMaxRange());
             if (target == null)
                 return false;
 
@@ -149,6 +149,30 @@ namespace SHIN
             }
 
             return true;
+        }
+
+        /// <summary>
+        /// Manager 우선 타겟이 사거리 안이면 그걸 쓰고, 아니면 최근접.
+        /// 우선 타겟이 사거리 밖이면 발사하지 않고 쿨도 안 깎는다(호출부 false).
+        /// </summary>
+        private SurvivorsRunUnitBase ResolveFireTarget(Vector3 origin, float maxRange)
+        {
+            var manager = Owner != null ? Owner.Manager : null;
+            if (manager == null)
+                return null;
+
+            var locked = manager.AttackTarget;
+            if (locked != null && !locked.IsDead)
+            {
+                var lockedSqr = (locked.transform.position - origin).sqrMagnitude;
+                var maxRangeSqr = maxRange * maxRange;
+                if (lockedSqr <= maxRangeSqr)
+                    return locked;
+
+                return null;
+            }
+
+            return FindNearestEnemyInRange(origin, maxRange);
         }
 
         private SurvivorsRunUnitBase FindNearestEnemyInRange(Vector3 origin, float maxRange)
