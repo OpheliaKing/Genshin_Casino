@@ -3,7 +3,7 @@ using UnityEngine;
 namespace SHIN
 {
     /// <summary>
-    /// 투사체 런타임. DamageObject + StraightMover를 묶고, 수명·명중 소멸을 처리한다.
+    /// 투사체 런타임. DamageObject + StraightMover를 묶고, 수명·명중 시 풀 반환(또는 Destroy)을 처리한다.
     /// </summary>
     [RequireComponent(typeof(SurvivorsRunDamageObject))]
     [RequireComponent(typeof(SurvivorsRunProjectileStraightMover))]
@@ -14,6 +14,7 @@ namespace SHIN
 
         private SurvivorsRunDamageObject _damageObject;
         private SurvivorsRunProjectileStraightMover _mover;
+        private string _poolKey;
         private float _lifeRemaining;
         private bool _launched;
         private bool _destroying;
@@ -42,13 +43,15 @@ namespace SHIN
             float hitCooldown,
             Vector2 direction,
             float speed,
-            float lifetime = -1f)
+            float lifetime = -1f,
+            string poolKey = null)
         {
             if (_damageObject == null)
                 _damageObject = GetComponent<SurvivorsRunDamageObject>();
             if (_mover == null)
                 _mover = GetComponent<SurvivorsRunProjectileStraightMover>();
 
+            _poolKey = poolKey;
             _destroying = false;
             _lifeRemaining = lifetime > 0f ? lifetime : _lifetime;
             _mover.BindTimeOwner(owner);
@@ -93,6 +96,20 @@ namespace SHIN
                 _mover.Stop();
             if (_damageObject != null)
                 _damageObject.SetDamageEnabled(false);
+
+            var manager = _damageObject != null ? _damageObject.Owner?.Manager : null;
+            if (!string.IsNullOrEmpty(_poolKey) && manager != null)
+            {
+                manager.ReturnPooled(_poolKey, gameObject);
+                _poolKey = null;
+                return;
+            }
+
+            if (manager != null && manager.TryReturnPooled(gameObject))
+            {
+                _poolKey = null;
+                return;
+            }
 
             Destroy(gameObject);
         }

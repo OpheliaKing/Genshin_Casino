@@ -270,6 +270,7 @@ namespace SHIN
             ReleasePlayerInstance();
             ReleaseTargetingObject();
             ReleaseMapInstance();
+            ClearAllPools();
             RestoreLobbyInputMap();
         }
     }

@@ -93,6 +93,11 @@ namespace SHIN
             }
 
             _projectilePrefab = prefab;
+
+            var manager = Owner != null ? Owner.Manager : null;
+            var poolKey = ResolvePoolKey();
+            if (manager != null && !string.IsNullOrEmpty(poolKey))
+                manager.PrewarmFromPrefab(poolKey, prefab, manager.PoolExpandBatch);
         }
 
         private bool TryFireProjectiles()
@@ -116,6 +121,8 @@ namespace SHIN
             var speed = ResolveProjectileSpeed();
             var lifetime = ResolveProjectileLifetime();
             var parent = ResolveSpawnParent();
+            var manager = Owner.Manager;
+            var poolKey = ResolvePoolKey();
 
             for (var i = 0; i < count; i++)
             {
@@ -127,7 +134,29 @@ namespace SHIN
                     direction = new Vector2(rotated.x, rotated.y);
                 }
 
-                var instance = Object.Instantiate(_projectilePrefab, origin, Quaternion.identity, parent);
+                GameObject instance;
+                if (manager != null && !string.IsNullOrEmpty(poolKey))
+                {
+                    instance = manager.RentFromPrefab(
+                        poolKey,
+                        _projectilePrefab,
+                        parent,
+                        activate: false);
+                }
+                else
+                {
+                    instance = Object.Instantiate(_projectilePrefab, origin, Quaternion.identity, parent);
+                }
+
+                if (instance == null)
+                {
+                    Debug.LogError(
+                        $"[SurvivorsRunProjectileItem] 투사체 대여/생성 실패. tid={Tid}");
+                    continue;
+                }
+
+                instance.transform.position = origin;
+                instance.transform.rotation = Quaternion.identity;
                 instance.SetActive(true);
 
                 var projectile = instance.GetComponent<SurvivorsRunProjectile>();
@@ -135,7 +164,10 @@ namespace SHIN
                 {
                     Debug.LogError(
                         $"[SurvivorsRunProjectileItem] 인스턴스에 SurvivorsRunProjectile이 없습니다. tid={Tid}");
-                    Object.Destroy(instance);
+                    if (manager != null && !string.IsNullOrEmpty(poolKey))
+                        manager.ReturnPooled(poolKey, instance);
+                    else
+                        Object.Destroy(instance);
                     continue;
                 }
 
@@ -145,10 +177,17 @@ namespace SHIN
                     hitCooldown,
                     direction,
                     speed,
-                    lifetime);
+                    lifetime,
+                    poolKey);
             }
 
             return true;
+        }
+
+        private string ResolvePoolKey()
+        {
+            var path = ItemData != null ? ItemData.DamagePrefabPath : null;
+            return string.IsNullOrWhiteSpace(path) ? null : path.Trim();
         }
 
         /// <summary>

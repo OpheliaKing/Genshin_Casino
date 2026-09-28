@@ -121,38 +121,32 @@ namespace SHIN
                 return null;
             }
 
-            var resourceManager = GameManager.Instance?.ResourceManager;
-            if (resourceManager == null)
-            {
-                Debug.LogError("[SurvivorsRunManager] ResourceManager가 없습니다.");
-                return null;
-            }
-
             EnsureEnemyRuntimeRefs();
             // 좌측 누수를 위해 X min clamp는 스폰 시에도 강제하지 않는다. Y만 맞춤.
             position = ClampEnemyMarchPosition(position);
 
-            // 비활성 생성 + 월드 좌표를 Instantiate 시점에 넣어 원점 플래시를 막는다.
-            var instance = await resourceManager.InstantiateAsync(
-                data.UnitPrefabPath.Trim(),
-                parent: _enemyRoot,
-                startInactive: true,
-                worldPosition: position);
+            var poolKey = data.UnitPrefabPath.Trim();
+            // 비활성 대여 후 좌표 세팅 → 원점 플래시 방지. 풀 비면 ExpandBatch만큼 생성.
+            var instance = await RentAsync(
+                poolKey,
+                activeParent: _enemyRoot,
+                activate: false);
 
             if (this == null)
             {
                 if (instance != null)
-                    resourceManager.ReleaseInstance(instance);
+                    ReturnPooled(poolKey, instance);
                 return null;
             }
 
             if (instance == null)
             {
-                Debug.LogError($"[SurvivorsRunManager] 적 프리팹 생성 실패: {data.UnitPrefabPath}");
+                Debug.LogError($"[SurvivorsRunManager] 적 프리팹 풀 대여 실패: {data.UnitPrefabPath}");
                 return null;
             }
 
             instance.transform.position = position;
+            instance.transform.rotation = Quaternion.identity;
 
             var enemy = instance.GetComponent<SurvivorsRunEnemyBase>();
             if (enemy == null)
@@ -162,7 +156,7 @@ namespace SHIN
             {
                 Debug.LogError(
                     $"[SurvivorsRunManager] 적 프리팹에 SurvivorsRunEnemyBase가 없습니다: {data.UnitPrefabPath}");
-                resourceManager.ReleaseInstance(instance);
+                ReturnPooled(poolKey, instance);
                 return null;
             }
 
@@ -291,7 +285,7 @@ namespace SHIN
             return local.x <= minLocal.x;
         }
 
-        /// <summary>적이 왼쪽을 통과했을 때 라이프 감소 후 제거.</summary>
+        /// <summary>적이 왼쪽을 통과했을 때 라이프 감소 후 풀 반환.</summary>
         public void NotifyEnemyLeaked(SurvivorsRunUnitBase enemy)
         {
             if (enemy == null)
@@ -300,14 +294,7 @@ namespace SHIN
             var life = _playerInfo.LoseLife(1);
             Debug.Log($"[SurvivorsRun] 적 누수 → Life={life} (enemy={enemy.Tid})");
 
-            ClearAttackTargetIfMatch(enemy);
-            _activeEnemies.Remove(enemy);
-
-            var resourceManager = GameManager.Instance?.ResourceManager;
-            if (resourceManager != null)
-                resourceManager.ReleaseInstance(enemy.gameObject);
-            else if (enemy.gameObject != null)
-                Destroy(enemy.gameObject);
+            DespawnEnemy(enemy);
 
             if (life <= 0)
             {
@@ -326,41 +313,67 @@ namespace SHIN
 
         public void PruneInactiveEnemies()
         {
-            var resourceManager = GameManager.Instance?.ResourceManager;
-
             for (var i = _activeEnemies.Count - 1; i >= 0; i--)
             {
                 var enemy = _activeEnemies[i];
                 if (enemy != null && !enemy.IsDead && enemy.gameObject.activeInHierarchy)
                     continue;
 
-                if (enemy != null)
-                {
-                    if (resourceManager != null)
-                        resourceManager.ReleaseInstance(enemy.gameObject);
-                    else if (enemy.gameObject != null)
-                        Destroy(enemy.gameObject);
-                }
-
-                _activeEnemies.RemoveAt(i);
+                DespawnEnemy(enemy);
             }
+        }
+
+        /// <summary>
+        /// 활성 목록에서 제거하고 풀에 반환한다.
+        /// </summary>
+        public void DespawnEnemy(SurvivorsRunUnitBase enemy)
+        {
+            if (enemy == null)
+                return;
+
+            ClearAttackTargetIfMatch(enemy);
+            _activeEnemies.Remove(enemy);
+            ReturnEnemyToPool(enemy);
+        }
+
+        private void ReturnEnemyToPool(SurvivorsRunUnitBase enemy)
+        {
+            if (enemy == null || enemy.gameObject == null)
+                return;
+
+            if (TryReturnPooled(enemy.gameObject))
+                return;
+
+            ReturnEnemyToPoolByTid(enemy);
+        }
+
+        private void ReturnEnemyToPoolByTid(SurvivorsRunUnitBase enemy)
+        {
+            var path = GetEnemyData(enemy.Tid)?.UnitPrefabPath;
+            if (!string.IsNullOrWhiteSpace(path))
+            {
+                ReturnPooled(path.Trim(), enemy.gameObject);
+                return;
+            }
+
+            Destroy(enemy.gameObject);
         }
 
         private void ReleaseAllEnemies()
         {
             StopEnemySpawning();
 
-            var resourceManager = GameManager.Instance?.ResourceManager;
             for (var i = _activeEnemies.Count - 1; i >= 0; i--)
             {
                 var enemy = _activeEnemies[i];
                 if (enemy == null)
+                {
+                    _activeEnemies.RemoveAt(i);
                     continue;
+                }
 
-                if (resourceManager != null)
-                    resourceManager.ReleaseInstance(enemy.gameObject);
-                else
-                    Destroy(enemy.gameObject);
+                ClearAttackTargetIfMatch(enemy);
+                ReturnEnemyToPool(enemy);
             }
 
             _activeEnemies.Clear();
