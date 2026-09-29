@@ -34,7 +34,11 @@ namespace SHIN
 
         public void SetStack(int stack)
         {
-            _stack = Mathf.Max(1, stack);
+            stack = Mathf.Max(1, stack);
+            if (_itemData != null)
+                stack = Mathf.Min(stack, _itemData.MaxStack);
+
+            _stack = stack;
             OnStackChanged(_stack);
         }
 
@@ -50,6 +54,18 @@ namespace SHIN
         public virtual void Tick(float dt)
         {
         }
+
+        /// <summary>ACTIVE / UNIQUE 수동 발동용. 무기(자동)는 false.</summary>
+        public virtual bool CanActivate => false;
+
+        /// <summary>ACTIVE / UNIQUE 수동 발동. 성공 시 true.</summary>
+        public virtual bool TryActivate() => false;
+
+        /// <summary>수동 발동 쿨 남은 시간(초). 자동 무기는 0.</summary>
+        public virtual float CooldownRemaining => 0f;
+
+        /// <summary>수동 발동 쿨 전체(초).</summary>
+        public virtual float CooldownDuration => ResolveFireCooldown();
 
         /// <summary>장착 해제·플레이어 제거 시 생성물 정리.</summary>
         public virtual void Dispose()
@@ -89,15 +105,20 @@ namespace SHIN
             return _owner != null ? Mathf.Max(0, _owner.Attack) : 0;
         }
 
+        /// <summary>Pulse·Projectile 발동 주기. HitCooldown(재타격 면역)과 별개. 공속 버프 반영.</summary>
+        protected float ResolveFireCooldown()
+        {
+            var baseCd = _itemData != null ? Mathf.Max(0f, _itemData.FireCooldown) : 1f;
+            if (baseCd <= 0f)
+                return 0f;
+
+            var speedMult = ResolveOwnerAttackSpeedMult();
+            return baseCd / speedMult;
+        }
+
         protected float ResolveHitCooldown()
         {
             return _itemData != null ? Mathf.Max(0f, _itemData.HitCooldown) : 0.5f;
-        }
-
-        /// <summary>Pulse·Projectile 발동 주기. HitCooldown(재타격 면역)과 별개.</summary>
-        protected float ResolveFireCooldown()
-        {
-            return _itemData != null ? Mathf.Max(0f, _itemData.FireCooldown) : 1f;
         }
 
         protected int ResolveObjectCount()
@@ -122,12 +143,34 @@ namespace SHIN
             return 2.5f;
         }
 
-        /// <summary>Projectile 조준 사거리. SO 값이 없으면 기본 12.</summary>
+        /// <summary>Projectile 조준 사거리. 사거리 버프 반영.</summary>
         protected float ResolveMaxRange()
         {
+            float baseRange;
             if (_itemData != null && _itemData.MaxRange > 0f)
-                return _itemData.MaxRange;
-            return 12f;
+                baseRange = _itemData.MaxRange;
+            else
+                baseRange = 12f;
+
+            return baseRange * ResolveOwnerRangeMult();
+        }
+
+        private float ResolveOwnerAttackSpeedMult()
+        {
+            if (_owner == null)
+                return 1f;
+
+            var mods = _owner.GetComponent<SurvivorsRunPlayerCombatMods>();
+            return mods != null ? mods.AttackSpeedMult : 1f;
+        }
+
+        private float ResolveOwnerRangeMult()
+        {
+            if (_owner == null)
+                return 1f;
+
+            var mods = _owner.GetComponent<SurvivorsRunPlayerCombatMods>();
+            return mods != null ? mods.RangeMult : 1f;
         }
 
         /// <summary>ItemData 히트 이펙트를 DamageObject에 주입.</summary>

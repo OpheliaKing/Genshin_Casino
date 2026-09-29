@@ -5,7 +5,7 @@ using UnityEngine;
 namespace SHIN
 {
     /// <summary>
-    /// 인게임 HUD·레벨업·패배·일시정지 UI 및 긴급 스킬 스텁.
+    /// 인게임 HUD·레벨업·패배·일시정지 UI 및 고유 스킬 발동.
     /// </summary>
     public partial class SurvivorsRunManager
     {
@@ -22,23 +22,56 @@ namespace SHIN
         private int _pendingLevelUps;
         private bool _levelUpShowing;
 
-        [SerializeField]
-        [Tooltip("긴급 스킬 쿨다운(초). 로직 연결 전 스텁용.")]
-        private float _emergencySkillCooldown = 12f;
+        private SurvivorsRunItemBase ResolveUniqueSkillItem()
+        {
+            if (_playerUnit == null || string.IsNullOrEmpty(_uniqueSkillTid))
+                return null;
 
-        private float _emergencyCooldownRemaining;
+            var controller = _playerUnit.GetComponent<SurvivorsRunPlayerItemController>();
+            return controller != null ? controller.FindByTid(_uniqueSkillTid) : null;
+        }
 
-        public bool IsEmergencySkillReady => _emergencyCooldownRemaining <= 0f && !_defeatShown;
-        public float EmergencySkillCooldownRemaining => Mathf.Max(0f, _emergencyCooldownRemaining);
+        public bool IsEmergencySkillReady
+        {
+            get
+            {
+                if (_defeatShown || string.IsNullOrEmpty(_uniqueSkillTid))
+                    return false;
+
+                var item = ResolveUniqueSkillItem();
+                return item != null && item.CanActivate;
+            }
+        }
+
+        public float EmergencySkillCooldownRemaining
+        {
+            get
+            {
+                var item = ResolveUniqueSkillItem();
+                return item != null ? item.CooldownRemaining : 0f;
+            }
+        }
+
         public float EmergencySkillCooldownNormalized
         {
             get
             {
-                if (_emergencySkillCooldown <= 0f)
+                var item = ResolveUniqueSkillItem();
+                if (item == null)
                     return 0f;
-                return Mathf.Clamp01(_emergencyCooldownRemaining / _emergencySkillCooldown);
+
+                var duration = item.CooldownDuration;
+                if (duration <= 0f)
+                    return 0f;
+
+                return Mathf.Clamp01(item.CooldownRemaining / duration);
             }
         }
+
+        public string UniqueSkillDisplayName =>
+            _uniqueSkillData != null && !string.IsNullOrWhiteSpace(_uniqueSkillData.Name)
+                ? _uniqueSkillData.Name
+                : "고유 스킬";
 
         private async Task ShowInGameHudAsync()
         {
@@ -71,7 +104,6 @@ namespace SHIN
             _pendingLevelUps = 0;
             _levelUpShowing = false;
             _lastSeenLevel = _playerInfo != null ? _playerInfo.Level : 1;
-            _emergencyCooldownRemaining = 0f;
         }
 
         private void BindRunUiEvents()
@@ -176,17 +208,28 @@ namespace SHIN
             for (var i = 0; i < source.Count; i++)
             {
                 var item = source[i];
-                if (item == null || !item.HasAttackPattern)
+                if (item == null)
                     continue;
-                pool.Add(item);
+
+                // 레벨업: 자동 무기 + 액티브. UNIQUE는 캐릭터 고정이라 제외.
+                if (item.HasAttackPattern ||
+                    (item.ItemType == SURVIVORSRUN_ITEM_TYPE.ACTIVE && item.UsesAttackPattern))
+                {
+                    if (IsOwnedAtMaxStack(item))
+                        continue;
+
+                    pool.Add(item);
+                }
             }
 
             if (pool.Count == 0)
             {
                 for (var i = 0; i < source.Count; i++)
                 {
-                    if (source[i] != null)
-                        pool.Add(source[i]);
+                    var fallback = source[i];
+                    if (fallback == null || IsOwnedAtMaxStack(fallback))
+                        continue;
+                    pool.Add(fallback);
                 }
             }
 
@@ -198,6 +241,15 @@ namespace SHIN
             }
 
             return result;
+        }
+
+        private bool IsOwnedAtMaxStack(SurvivorsRunItemData itemData)
+        {
+            if (itemData == null || _playerInfo == null)
+                return false;
+
+            var owned = _playerInfo.FindOwned(itemData.Tid);
+            return owned != null && itemData.IsAtMaxStack(owned.Stack);
         }
 
         public void ConfirmLevelUpChoice(SurvivorsRunItemData itemData)
@@ -348,28 +400,101 @@ namespace SHIN
             EnableInputMap(InputManager.ActionMapName.SurvivorsRun);
         }
 
-        /// <summary>긴급 스킬 스텁. 쿨만 돌리고 실제 효과는 이후 작업.</summary>
+        /// <summary>고유 스킬(UNIQUE) 수동 발동. HUD 긴급 버튼과 동일 경로.</summary>
         public bool TryActivateEmergencySkill()
         {
             if (_defeatShown || _pausedByUi || _levelUpShowing)
                 return false;
 
-            if (!IsEmergencySkillReady)
+            if (string.IsNullOrEmpty(_uniqueSkillTid) || _playerUnit == null)
                 return false;
 
-            _emergencyCooldownRemaining = Mathf.Max(0.1f, _emergencySkillCooldown);
-            Debug.Log("[SurvivorsRun] Emergency skill stub activated (logic TBD).");
-            return true;
+            var controller = _playerUnit.GetComponent<SurvivorsRunPlayerItemController>();
+            if (controller == null)
+                return false;
+
+            return controller.TryActivateItem(_uniqueSkillTid);
+        }
+
+        public const int MaxActiveSkillSlots = 3;
+
+        public SurvivorsRunItemBase GetActiveSkillItem(int slotIndex)
+        {
+            if (slotIndex < 0 || _playerUnit == null)
+                return null;
+
+            var controller = _playerUnit.GetComponent<SurvivorsRunPlayerItemController>();
+            if (controller == null)
+                return null;
+
+            var found = 0;
+            for (var i = 0; i < controller.Items.Count; i++)
+            {
+                var item = controller.Items[i];
+                if (item?.ItemData == null || item.ItemData.ItemType != SURVIVORSRUN_ITEM_TYPE.ACTIVE)
+                    continue;
+
+                if (found == slotIndex)
+                    return item;
+
+                found++;
+            }
+
+            return null;
+        }
+
+        public bool TryActivateActiveSkill(int slotIndex)
+        {
+            if (_defeatShown || _pausedByUi || _levelUpShowing)
+                return false;
+
+            if (_playerUnit == null)
+                return false;
+
+            var controller = _playerUnit.GetComponent<SurvivorsRunPlayerItemController>();
+            return controller != null && controller.TryActivateActiveAt(slotIndex);
+        }
+
+        public bool IsActiveSkillReady(int slotIndex)
+        {
+            if (_defeatShown)
+                return false;
+
+            var item = GetActiveSkillItem(slotIndex);
+            return item != null && item.CanActivate;
+        }
+
+        public float GetActiveSkillCooldownRemaining(int slotIndex)
+        {
+            var item = GetActiveSkillItem(slotIndex);
+            return item != null ? item.CooldownRemaining : 0f;
+        }
+
+        public float GetActiveSkillCooldownNormalized(int slotIndex)
+        {
+            var item = GetActiveSkillItem(slotIndex);
+            if (item == null)
+                return 0f;
+
+            var duration = item.CooldownDuration;
+            if (duration <= 0f)
+                return 0f;
+
+            return Mathf.Clamp01(item.CooldownRemaining / duration);
+        }
+
+        public string GetActiveSkillDisplayName(int slotIndex)
+        {
+            var item = GetActiveSkillItem(slotIndex);
+            if (item?.ItemData != null && !string.IsNullOrWhiteSpace(item.ItemData.Name))
+                return item.ItemData.Name;
+
+            return "액티브";
         }
 
         private void TickEmergencySkillCooldown()
         {
-            if (_emergencyCooldownRemaining <= 0f || _timeScale <= 0f)
-                return;
-
-            _emergencyCooldownRemaining -= Time.deltaTime * _timeScale;
-            if (_emergencyCooldownRemaining < 0f)
-                _emergencyCooldownRemaining = 0f;
+            // 쿨은 UNIQUE/ACTIVE Item.Tick에서 감소. 매니저 별도 타이머 없음.
         }
 
         public void RetryAfterDefeat()
@@ -394,13 +519,16 @@ namespace SHIN
                 _playerInfo.BindItemController(itemController);
                 _lastSeenLevel = 1;
                 if (_selectedCharacter != null)
+                {
                     await ApplyStartWeaponAsync(_selectedCharacter);
+                    await ApplyUniqueSkillAsync(_selectedCharacter);
+                    await ApplyStartActiveAsync(_selectedCharacter);
+                }
             }
 
             _defeatShown = false;
             _pendingLevelUps = 0;
             _levelUpShowing = false;
-            _emergencyCooldownRemaining = 0f;
             _inGameUi?.Bind(this);
 
             ResumeFromOverlay();

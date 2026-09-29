@@ -40,9 +40,19 @@ namespace SHIN
         public float UnitSpeed => _unitSpeed;
 
         [SerializeField]
-        [Tooltip("플레이어 전용. 시작 시 장착할 무기 ItemData tid (예: item_orbit_001). 몬스터는 비운다.")]
+        [Tooltip("플레이어 전용. 시작 시 장착할 무기 ItemData tid (예: item_projectile_001). 몬스터는 비운다.")]
         private string _startWeaponTid;
         public string StartWeaponTid => _startWeaponTid;
+
+        [SerializeField]
+        [Tooltip("플레이어 전용. 고유 스킬 ItemData tid (ItemType=UNIQUE). 몬스터는 비운다.")]
+        private string _uniqueSkillTid;
+        public string UniqueSkillTid => _uniqueSkillTid;
+
+        [SerializeField]
+        [Tooltip("플레이어 전용. 시작 시 지급할 액티브 ItemData tid (ItemType=ACTIVE). 비우면 없음.")]
+        private string _startActiveTid;
+        public string StartActiveTid => _startActiveTid;
 
         [SerializeField]
         [Tooltip("몬스터 전용. 비우면 돌진(Contact)만. 플레이어 데이터는 비워 둔다.")]

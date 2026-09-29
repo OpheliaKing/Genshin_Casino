@@ -6,11 +6,21 @@ using UnityEngine.UI;
 namespace SHIN
 {
     /// <summary>
-    /// 뱀서 런 HUD. PlayerInfo·플레이어 HP 바인딩, 긴급 스킬 버튼 스텁, Pause 진입.
+    /// 뱀서 런 HUD. PlayerInfo·플레이어 HP 바인딩, 고유/액티브 스킬 버튼, Pause 진입.
     /// </summary>
     public class SurvivorsRunInGameUI : UIBase
     {
         private const int MaxItemSlots = 6;
+
+        private sealed class SkillSlotView
+        {
+            public GameObject Root;
+            public Button Button;
+            public Image Icon;
+            public Image CooldownFill;
+            public TextMeshProUGUI Label;
+            public int SlotIndex;
+        }
 
         [SerializeField] private TextMeshProUGUI _lifeText;
         [SerializeField] private TextMeshProUGUI _levelText;
@@ -23,12 +33,14 @@ namespace SHIN
         [SerializeField] private Button _emergencySkillButton;
         [SerializeField] private Image _emergencyCooldownFill;
         [SerializeField] private TextMeshProUGUI _emergencyLabel;
+        [SerializeField] private Transform _activeSkillRow;
 
         private SurvivorsRunManager _manager;
         private SurvivorsRunPlayerInfo _playerInfo;
         private SurvivorsRunUnitBase _boundPlayer;
         private readonly List<Image> _itemIcons = new();
         private readonly List<TextMeshProUGUI> _itemStacks = new();
+        private readonly List<SkillSlotView> _activeSlots = new();
         private bool _built;
 
         public override void OnShow()
@@ -68,14 +80,22 @@ namespace SHIN
             }
 
             BindPlayerUnit(_manager.PlayerUnit);
-            RefreshEmergencyVisual();
+            RefreshSkillVisuals();
         }
 
-        public void RefreshEmergencyVisual()
+        public void RefreshEmergencyVisual() => RefreshSkillVisuals();
+
+        private void RefreshSkillVisuals()
         {
             if (_manager == null)
                 return;
 
+            RefreshUniqueVisual();
+            RefreshActiveVisuals();
+        }
+
+        private void RefreshUniqueVisual()
+        {
             var ready = _manager.IsEmergencySkillReady;
             var fill = _manager.EmergencySkillCooldownNormalized;
             if (_emergencyCooldownFill != null)
@@ -83,13 +103,54 @@ namespace SHIN
             if (_emergencySkillButton != null)
                 _emergencySkillButton.interactable = ready;
             if (_emergencyLabel != null)
-                _emergencyLabel.text = ready ? "스킬" : $"{Mathf.CeilToInt(_manager.EmergencySkillCooldownRemaining)}";
+                _emergencyLabel.text = ready
+                    ? _manager.UniqueSkillDisplayName
+                    : $"{Mathf.CeilToInt(_manager.EmergencySkillCooldownRemaining)}";
+        }
+
+        private void RefreshActiveVisuals()
+        {
+            for (var i = 0; i < _activeSlots.Count; i++)
+            {
+                var slot = _activeSlots[i];
+                if (slot == null || slot.Root == null)
+                    continue;
+
+                var item = _manager.GetActiveSkillItem(i);
+                var has = item != null;
+                slot.Root.SetActive(has);
+                if (!has)
+                    continue;
+
+                var ready = _manager.IsActiveSkillReady(i);
+                var fill = _manager.GetActiveSkillCooldownNormalized(i);
+                if (slot.CooldownFill != null)
+                    slot.CooldownFill.fillAmount = ready ? 0f : fill;
+                if (slot.Button != null)
+                    slot.Button.interactable = ready;
+
+                var data = item.ItemData;
+                if (slot.Icon != null)
+                {
+                    slot.Icon.sprite = data != null ? data.Icon : null;
+                    slot.Icon.color = slot.Icon.sprite != null
+                        ? Color.white
+                        : new Color(0.3f, 0.55f, 0.75f, 0.95f);
+                }
+
+                if (slot.Label != null)
+                {
+                    slot.Label.text = ready
+                        ? _manager.GetActiveSkillDisplayName(i)
+                        : $"{Mathf.CeilToInt(_manager.GetActiveSkillCooldownRemaining(i))}";
+                }
+            }
         }
 
         private void Update()
         {
             if (_manager != null)
-                RefreshEmergencyVisual();
+                RefreshSkillVisuals();
         }
 
         private void BindPlayerUnit(SurvivorsRunUnitBase player)
@@ -174,30 +235,45 @@ namespace SHIN
 
         private void OnOwnedItemsChanged()
         {
+            RefreshInventoryRow();
+            RefreshActiveVisuals();
+        }
+
+        private void RefreshInventoryRow()
+        {
             if (_playerInfo == null)
                 return;
 
             var items = _playerInfo.OwnedItems;
-            for (var i = 0; i < MaxItemSlots; i++)
+            var displayIndex = 0;
+            for (var i = 0; i < items.Count && displayIndex < MaxItemSlots; i++)
             {
-                var has = items != null && i < items.Count && items[i] != null;
-                if (i >= _itemIcons.Count)
+                var owned = items[i];
+                if (owned?.ItemData == null)
                     continue;
 
-                var icon = _itemIcons[i];
-                var stack = _itemStacks[i];
+                // 하단 인벤: 자동 무기/패시브만. UNIQUE·ACTIVE는 우측 스킬 슬롯.
+                if (owned.ItemData.ItemType == SURVIVORSRUN_ITEM_TYPE.UNIQUE ||
+                    owned.ItemData.ItemType == SURVIVORSRUN_ITEM_TYPE.ACTIVE)
+                    continue;
+
+                var icon = _itemIcons[displayIndex];
+                var stack = _itemStacks[displayIndex];
                 if (icon == null)
                     continue;
 
-                icon.gameObject.SetActive(has);
-                if (!has)
-                    continue;
-
-                var data = items[i].ItemData;
-                icon.sprite = data != null ? data.Icon : null;
+                icon.gameObject.SetActive(true);
+                icon.sprite = owned.ItemData.Icon;
                 icon.color = icon.sprite != null ? Color.white : new Color(0.35f, 0.35f, 0.45f, 0.9f);
                 if (stack != null)
-                    stack.text = items[i].Stack > 1 ? items[i].Stack.ToString() : string.Empty;
+                    stack.text = owned.Stack > 1 ? owned.Stack.ToString() : string.Empty;
+                displayIndex++;
+            }
+
+            for (var i = displayIndex; i < MaxItemSlots; i++)
+            {
+                if (i < _itemIcons.Count && _itemIcons[i] != null)
+                    _itemIcons[i].gameObject.SetActive(false);
             }
         }
 
@@ -209,7 +285,13 @@ namespace SHIN
         private void OnEmergencyClicked()
         {
             _manager?.TryActivateEmergencySkill();
-            RefreshEmergencyVisual();
+            RefreshSkillVisuals();
+        }
+
+        private void OnActiveClicked(int slotIndex)
+        {
+            _manager?.TryActivateActiveSkill(slotIndex);
+            RefreshSkillVisuals();
         }
 
         private void EnsureBuilt()
@@ -222,6 +304,7 @@ namespace SHIN
 
             if (_lifeText != null && _pauseButton != null)
             {
+                EnsureActiveSlotsExist();
                 WireButtons();
                 return;
             }
@@ -243,6 +326,32 @@ namespace SHIN
                 _emergencySkillButton.onClick.RemoveListener(OnEmergencyClicked);
                 _emergencySkillButton.onClick.AddListener(OnEmergencyClicked);
             }
+
+            for (var i = 0; i < _activeSlots.Count; i++)
+            {
+                var slot = _activeSlots[i];
+                if (slot?.Button == null)
+                    continue;
+
+                var index = slot.SlotIndex;
+                slot.Button.onClick.RemoveAllListeners();
+                slot.Button.onClick.AddListener(() => OnActiveClicked(index));
+            }
+        }
+
+        private void EnsureActiveSlotsExist()
+        {
+            if (_activeSlots.Count > 0)
+                return;
+
+            if (_activeSkillRow == null)
+            {
+                var rowGo = transform.Find("SkillBar/ActiveRow");
+                _activeSkillRow = rowGo != null ? rowGo : null;
+            }
+
+            if (_activeSkillRow == null)
+                BuildSkillBar(createUnique: false);
         }
 
         private void BuildRuntimeTree()
@@ -320,25 +429,125 @@ namespace SHIN
                 _itemStacks.Add(stack);
             }
 
-            // Emergency skill bottom-right
-            var skillGo = SurvivorsRunUiBuild.Child(transform, "EmergencySkill");
-            var skillRt = skillGo.GetComponent<RectTransform>();
-            SurvivorsRunUiBuild.SetAnchored(skillRt, new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(1f, 0f),
-                new Vector2(-36f, 36f), new Vector2(140f, 140f));
-            _emergencySkillButton = SurvivorsRunUiBuild.AddButton(skillGo, new Color(0.45f, 0.25f, 0.7f, 0.92f));
+            BuildSkillBar(createUnique: true);
+        }
 
-            var fillGo = SurvivorsRunUiBuild.Child(skillGo.transform, "CooldownFill");
+        private void BuildSkillBar(bool createUnique)
+        {
+            var bar = transform.Find("SkillBar")?.gameObject;
+            if (bar == null)
+                bar = SurvivorsRunUiBuild.Child(transform, "SkillBar");
+
+            var barRt = bar.GetComponent<RectTransform>();
+            SurvivorsRunUiBuild.SetAnchored(barRt, new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(1f, 0f),
+                new Vector2(-24f, 24f), new Vector2(460f, 150f));
+
+            var barLayout = bar.GetComponent<HorizontalLayoutGroup>();
+            if (barLayout == null)
+                barLayout = bar.AddComponent<HorizontalLayoutGroup>();
+            barLayout.spacing = 12f;
+            barLayout.childAlignment = TextAnchor.LowerRight;
+            barLayout.childControlWidth = false;
+            barLayout.childControlHeight = false;
+            barLayout.childForceExpandWidth = false;
+            barLayout.childForceExpandHeight = false;
+            barLayout.reverseArrangement = false;
+
+            if (_activeSkillRow == null)
+            {
+                var rowGo = SurvivorsRunUiBuild.Child(bar.transform, "ActiveRow");
+                _activeSkillRow = rowGo.transform;
+                var rowRt = rowGo.GetComponent<RectTransform>();
+                rowRt.sizeDelta = new Vector2(300f, 110f);
+                var rowLayout = rowGo.AddComponent<HorizontalLayoutGroup>();
+                rowLayout.spacing = 8f;
+                rowLayout.childAlignment = TextAnchor.MiddleRight;
+                rowLayout.childControlWidth = false;
+                rowLayout.childControlHeight = false;
+                rowLayout.childForceExpandWidth = false;
+                rowLayout.childForceExpandHeight = false;
+            }
+
+            _activeSlots.Clear();
+            for (var i = 0; i < SurvivorsRunManager.MaxActiveSkillSlots; i++)
+                _activeSlots.Add(CreateActiveSlot(_activeSkillRow, i));
+
+            if (!createUnique && _emergencySkillButton != null)
+                return;
+
+            // Unique skill (rightmost, larger)
+            var existingUnique = bar.transform.Find("UniqueSkill")?.gameObject;
+            var uniqueGo = existingUnique != null
+                ? existingUnique
+                : SurvivorsRunUiBuild.Child(bar.transform, "UniqueSkill");
+            var uniqueRt = uniqueGo.GetComponent<RectTransform>();
+            uniqueRt.sizeDelta = new Vector2(140f, 140f);
+
+            if (_emergencySkillButton == null)
+                _emergencySkillButton = SurvivorsRunUiBuild.AddButton(uniqueGo, new Color(0.45f, 0.25f, 0.7f, 0.92f));
+
+            if (_emergencyCooldownFill == null)
+            {
+                var fillGo = SurvivorsRunUiBuild.Child(uniqueGo.transform, "CooldownFill");
+                SurvivorsRunUiBuild.StretchFull(fillGo);
+                _emergencyCooldownFill = SurvivorsRunUiBuild.AddImage(fillGo, new Color(0f, 0f, 0f, 0.55f), raycast: false);
+                _emergencyCooldownFill.type = Image.Type.Filled;
+                _emergencyCooldownFill.fillMethod = Image.FillMethod.Radial360;
+                _emergencyCooldownFill.fillOrigin = (int)Image.Origin360.Top;
+                _emergencyCooldownFill.fillClockwise = true;
+                _emergencyCooldownFill.fillAmount = 0f;
+            }
+
+            if (_emergencyLabel == null)
+            {
+                var labelGo = SurvivorsRunUiBuild.Child(uniqueGo.transform, "Label");
+                SurvivorsRunUiBuild.StretchFull(labelGo);
+                _emergencyLabel = SurvivorsRunUiBuild.AddText(labelGo, "고유", 26f, TextAlignmentOptions.Center);
+            }
+
+            // move unique to end
+            uniqueGo.transform.SetAsLastSibling();
+        }
+
+        private static SkillSlotView CreateActiveSlot(Transform parent, int index)
+        {
+            var go = SurvivorsRunUiBuild.Child(parent, $"Active_{index}");
+            var rt = go.GetComponent<RectTransform>();
+            rt.sizeDelta = new Vector2(96f, 96f);
+
+            var button = SurvivorsRunUiBuild.AddButton(go, new Color(0.2f, 0.45f, 0.65f, 0.92f));
+            var icon = SurvivorsRunUiBuild.AddImage(
+                SurvivorsRunUiBuild.Child(go.transform, "Icon"),
+                new Color(0.3f, 0.55f, 0.75f, 0.95f),
+                raycast: false);
+            SurvivorsRunUiBuild.StretchFull(icon.gameObject);
+            var iconRt = icon.GetComponent<RectTransform>();
+            iconRt.offsetMin = new Vector2(10f, 10f);
+            iconRt.offsetMax = new Vector2(-10f, -10f);
+
+            var fillGo = SurvivorsRunUiBuild.Child(go.transform, "CooldownFill");
             SurvivorsRunUiBuild.StretchFull(fillGo);
-            _emergencyCooldownFill = SurvivorsRunUiBuild.AddImage(fillGo, new Color(0f, 0f, 0f, 0.55f), raycast: false);
-            _emergencyCooldownFill.type = Image.Type.Filled;
-            _emergencyCooldownFill.fillMethod = Image.FillMethod.Radial360;
-            _emergencyCooldownFill.fillOrigin = (int)Image.Origin360.Top;
-            _emergencyCooldownFill.fillClockwise = true;
-            _emergencyCooldownFill.fillAmount = 0f;
+            var fill = SurvivorsRunUiBuild.AddImage(fillGo, new Color(0f, 0f, 0f, 0.55f), raycast: false);
+            fill.type = Image.Type.Filled;
+            fill.fillMethod = Image.FillMethod.Radial360;
+            fill.fillOrigin = (int)Image.Origin360.Top;
+            fill.fillClockwise = true;
+            fill.fillAmount = 0f;
 
-            var labelGo = SurvivorsRunUiBuild.Child(skillGo.transform, "Label");
+            var labelGo = SurvivorsRunUiBuild.Child(go.transform, "Label");
             SurvivorsRunUiBuild.StretchFull(labelGo);
-            _emergencyLabel = SurvivorsRunUiBuild.AddText(labelGo, "스킬", 30f, TextAlignmentOptions.Center);
+            var label = SurvivorsRunUiBuild.AddText(labelGo, "액티브", 18f, TextAlignmentOptions.Center);
+
+            go.SetActive(false);
+            return new SkillSlotView
+            {
+                Root = go,
+                Button = button,
+                Icon = icon,
+                CooldownFill = fill,
+                Label = label,
+                SlotIndex = index,
+            };
         }
 
         private static TextMeshProUGUI CreateLabel(

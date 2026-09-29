@@ -112,11 +112,20 @@ namespace SHIN
             var owned = FindOwned(tid);
             if (owned != null)
             {
+                var room = itemData.GetRemainingStackRoom(owned.Stack);
+                if (room <= 0)
+                {
+                    Debug.Log($"[PlayerInfo] 최대 중첩입니다: {tid} ({owned.Stack}/{itemData.MaxStack})");
+                    return owned;
+                }
+
+                stack = Mathf.Min(stack, room);
                 owned.Stack += stack;
                 owned.ItemData = itemData;
             }
             else
             {
+                stack = Mathf.Min(stack, itemData.MaxStack);
                 owned = new SurvivorsRunPlayerOwnedItem
                 {
                     Tid = tid,

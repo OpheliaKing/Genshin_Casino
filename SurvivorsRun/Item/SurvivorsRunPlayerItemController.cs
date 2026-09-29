@@ -51,16 +51,26 @@ namespace SHIN
             if (itemData == null || _owner == null)
                 return null;
 
-            if (!itemData.HasAttackPattern && itemData.ItemType == SURVIVORSRUN_ITEM_TYPE.WEAPON)
+            if (itemData.ItemType == SURVIVORSRUN_ITEM_TYPE.WEAPON && !itemData.HasAttackPattern)
             {
                 Debug.LogWarning($"[PlayerItem] 무기 패턴이 없습니다: {itemData.Tid}", this);
+                return null;
+            }
+
+            if (itemData.IsInputTriggered && !itemData.UsesAttackPattern)
+            {
+                Debug.LogWarning($"[PlayerItem] 고유/액티브 패턴이 없습니다: {itemData.Tid}", this);
                 return null;
             }
 
             var existing = FindByTid(itemData.Tid);
             if (existing != null)
             {
-                existing.AddStack(Mathf.Max(1, stack));
+                var room = itemData.GetRemainingStackRoom(existing.Stack);
+                if (room <= 0)
+                    return existing;
+
+                existing.AddStack(Mathf.Min(Mathf.Max(1, stack), room));
                 return existing;
             }
 
@@ -71,9 +81,47 @@ namespace SHIN
                 return null;
             }
 
-            item.Setup(itemData, _owner, Mathf.Max(1, stack));
+            item.Setup(itemData, _owner, Mathf.Min(Mathf.Max(1, stack), itemData.MaxStack));
             _items.Add(item);
             return item;
+        }
+
+        /// <summary>ACTIVE / UNIQUE 수동 발동.</summary>
+        public bool TryActivateItem(string tid)
+        {
+            var item = FindByTid(tid);
+            return item != null && item.TryActivate();
+        }
+
+        public SurvivorsRunItemBase FindUniqueSkill()
+        {
+            for (var i = 0; i < _items.Count; i++)
+            {
+                var item = _items[i];
+                if (item?.ItemData != null && item.ItemData.ItemType == SURVIVORSRUN_ITEM_TYPE.UNIQUE)
+                    return item;
+            }
+
+            return null;
+        }
+
+        /// <summary>보유 ACTIVE 중 index번째를 발동. 없으면 false.</summary>
+        public bool TryActivateActiveAt(int index)
+        {
+            var found = 0;
+            for (var i = 0; i < _items.Count; i++)
+            {
+                var item = _items[i];
+                if (item?.ItemData == null || item.ItemData.ItemType != SURVIVORSRUN_ITEM_TYPE.ACTIVE)
+                    continue;
+
+                if (found == index)
+                    return item.TryActivate();
+
+                found++;
+            }
+
+            return false;
         }
 
         public SurvivorsRunItemBase FindByTid(string tid)
@@ -112,6 +160,12 @@ namespace SHIN
             for (var i = 0; i < _items.Count; i++)
                 _items[i]?.Dispose();
             _items.Clear();
+
+            if (_owner != null)
+            {
+                var mods = _owner.GetComponent<SurvivorsRunPlayerCombatMods>();
+                mods?.ClearAll();
+            }
         }
 
         private static SurvivorsRunItemBase CreateItem(SURVIVORSRUN_ATTACK_PATTERN pattern)
@@ -122,6 +176,7 @@ namespace SHIN
                 SURVIVORSRUN_ATTACK_PATTERN.PULSE => new SurvivorsRunPulseItem(),
                 SURVIVORSRUN_ATTACK_PATTERN.AURA => new SurvivorsRunAuraItem(),
                 SURVIVORSRUN_ATTACK_PATTERN.PROJECTILE => new SurvivorsRunProjectileItem(),
+                SURVIVORSRUN_ATTACK_PATTERN.BUFF => new SurvivorsRunBuffItem(),
                 _ => null,
             };
         }

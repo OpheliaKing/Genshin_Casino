@@ -12,6 +12,8 @@ namespace SHIN
         private GameObject _playerInstance;
         private SurvivorsRunUnitBase _playerUnit;
         private SurvivorsRunItemDataSO _itemDataSo;
+        private string _uniqueSkillTid;
+        private SurvivorsRunItemData _uniqueSkillData;
         private readonly SurvivorsRunPlayerInfo _playerInfo = new();
 
         public float TimeScale => _timeScale;
@@ -20,6 +22,8 @@ namespace SHIN
         public SurvivorsRunUnitBase PlayerUnit => _playerUnit;
         public SurvivorsRunItemDataSO ItemDataSo => _itemDataSo;
         public SurvivorsRunPlayerInfo PlayerInfo => _playerInfo;
+        public SurvivorsRunItemData UniqueSkillData => _uniqueSkillData;
+        public string UniqueSkillTid => _uniqueSkillTid;
 
         private void Awake()
         {
@@ -174,6 +178,8 @@ namespace SHIN
                 _playerInfo.Reset();
                 _playerInfo.BindItemController(itemController);
                 await ApplyStartWeaponAsync(data);
+                await ApplyUniqueSkillAsync(data);
+                await ApplyStartActiveAsync(data);
             }
             else
             {
@@ -219,6 +225,67 @@ namespace SHIN
             {
                 Debug.LogWarning(
                     $"[SurvivorsRunManager] 시작 무기를 찾지 못했습니다: {data.StartWeaponTid} ({data.UnitId})");
+                return;
+            }
+
+            _playerInfo.AddItem(itemData);
+        }
+
+        private async Task ApplyUniqueSkillAsync(SurvivorsRunUnitData data)
+        {
+            _uniqueSkillTid = null;
+            _uniqueSkillData = null;
+
+            if (data == null || string.IsNullOrWhiteSpace(data.UniqueSkillTid))
+                return;
+
+            await EnsureItemDataSoAsync();
+            if (_itemDataSo == null)
+                return;
+
+            var tid = data.UniqueSkillTid.Trim();
+            var itemData = _itemDataSo.GetByTid(tid);
+            if (itemData == null)
+            {
+                Debug.LogWarning(
+                    $"[SurvivorsRunManager] 고유 스킬을 찾지 못했습니다: {tid} ({data.UnitId})");
+                return;
+            }
+
+            if (itemData.ItemType != SURVIVORSRUN_ITEM_TYPE.UNIQUE)
+            {
+                Debug.LogWarning(
+                    $"[SurvivorsRunManager] 고유 스킬 tid의 ItemType이 UNIQUE가 아닙니다: {tid} ({itemData.ItemType})");
+                return;
+            }
+
+            _uniqueSkillTid = tid;
+            _uniqueSkillData = itemData;
+            _playerInfo.AddItem(itemData);
+        }
+
+        private async Task ApplyStartActiveAsync(SurvivorsRunUnitData data)
+        {
+            if (data == null || string.IsNullOrWhiteSpace(data.StartActiveTid))
+                return;
+
+            await EnsureItemDataSoAsync();
+            if (_itemDataSo == null)
+                return;
+
+            var tid = data.StartActiveTid.Trim();
+            var itemData = _itemDataSo.GetByTid(tid);
+            if (itemData == null)
+            {
+                Debug.LogWarning(
+                    $"[SurvivorsRunManager] 시작 액티브를 찾지 못했습니다: {tid} ({data.UnitId})");
+                return;
+            }
+
+            if (itemData.ItemType != SURVIVORSRUN_ITEM_TYPE.ACTIVE)
+            {
+                Debug.LogWarning(
+                    $"[SurvivorsRunManager] 시작 액티브 tid의 ItemType이 ACTIVE가 아닙니다: {tid} ({itemData.ItemType})");
                 return;
             }
 

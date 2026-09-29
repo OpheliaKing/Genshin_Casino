@@ -16,6 +16,8 @@ namespace SHIN
         PULSE,
         AURA,
         PROJECTILE,
+        /// <summary>스탯 버프(공속·사거리 등). ACTIVE/UNIQUE에서 주로 사용.</summary>
+        BUFF,
     }
 
     /// <summary>

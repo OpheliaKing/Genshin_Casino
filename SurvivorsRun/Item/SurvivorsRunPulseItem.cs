@@ -24,10 +24,31 @@ namespace SHIN
 
         public float CurrentPulseScale => ResolvePulseScale();
 
+        private bool IsManualActivation => ItemData != null && ItemData.IsInputTriggered;
+
+        public override bool CanActivate =>
+            IsManualActivation &&
+            Owner != null &&
+            !Owner.IsDead &&
+            _damageObject != null &&
+            _cooldownRemaining <= 0f;
+
+        public override float CooldownRemaining => Mathf.Max(0f, _cooldownRemaining);
+
+        public override bool TryActivate()
+        {
+            if (!CanActivate)
+                return false;
+
+            FirePulse();
+            _cooldownRemaining = ResolveFireCooldown();
+            return true;
+        }
+
         public override void Setup(SurvivorsRunItemData itemData, SurvivorsRunUnitBase owner, int stack = 1)
         {
             base.Setup(itemData, owner, stack);
-            // 장착 직후 바로 한 번 나가게 둔다.
+            // 자동 무기: 장착 직후 바로 한 번. 수동(UNIQUE/ACTIVE): 버튼으로만 발동.
             _cooldownRemaining = 0f;
         }
 
@@ -55,6 +76,13 @@ namespace SHIN
 
             if (_damageObject == null)
                 return;
+
+            if (IsManualActivation)
+            {
+                if (_cooldownRemaining > 0f)
+                    _cooldownRemaining -= dt;
+                return;
+            }
 
             _cooldownRemaining -= dt;
             if (_cooldownRemaining > 0f)

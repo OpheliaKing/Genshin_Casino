@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace SHIN
@@ -21,9 +22,19 @@ namespace SHIN
         public SURVIVORSRUN_ITEM_TYPE ItemType => _itemType;
 
         [SerializeField]
-        [Tooltip("WEAPON일 때 사용. PASSIVE면 NONE.")]
+        [Tooltip("WEAPON / ACTIVE / UNIQUE일 때 주 패턴. PASSIVE면 NONE.")]
         private SURVIVORSRUN_ATTACK_PATTERN _attackPattern = SURVIVORSRUN_ATTACK_PATTERN.NONE;
         public SURVIVORSRUN_ATTACK_PATTERN AttackPattern => _attackPattern;
+
+        [SerializeField]
+        [Tooltip("복합 효과 목록. BUFF 아이템은 여기에 공속·사거리 등을 넣는다.")]
+        private List<SurvivorsRunItemEffectEntry> _effects = new();
+        public IReadOnlyList<SurvivorsRunItemEffectEntry> Effects => _effects;
+
+        [SerializeField]
+        [Tooltip("최대 중첩. 도달하면 레벨업 후보에서 제외되고 추가 중첩도 막는다. 1 미만이면 1로 취급.")]
+        private int _maxStack = 5;
+        public int MaxStack => Mathf.Max(1, _maxStack);
 
         [SerializeField]
         [Tooltip("DamageObject 프리팹 Addressables 주소. 비우면 런타임에 기본 히트박스를 생성한다.")]
@@ -41,7 +52,7 @@ namespace SHIN
         public float HitCooldown => _hitCooldown;
 
         [SerializeField]
-        [Tooltip("발동 쿨타임(초). Pulse·Projectile 등 공격 주기. Orbit처럼 상주 히트박스는 사용하지 않음.")]
+        [Tooltip("발동 쿨타임(초). Pulse·Projectile 공격 주기 / ACTIVE·UNIQUE 버튼 쿨.")]
         private float _fireCooldown = 1f;
         public float FireCooldown => _fireCooldown;
 
@@ -75,12 +86,34 @@ namespace SHIN
         private float _hitEffectLifetime = 1.5f;
         public float HitEffectLifetime => _hitEffectLifetime;
 
+        /// <summary>자동 무기(WEAPON)로 장착·발동 가능한 공격 패턴인지.</summary>
         public bool HasAttackPattern =>
             _itemType == SURVIVORSRUN_ITEM_TYPE.WEAPON &&
+            UsesAttackPattern;
+
+        /// <summary>입력 발동(ACTIVE / UNIQUE) 아이템인지.</summary>
+        public bool IsInputTriggered =>
+            _itemType == SURVIVORSRUN_ITEM_TYPE.ACTIVE ||
+            _itemType == SURVIVORSRUN_ITEM_TYPE.UNIQUE;
+
+        /// <summary>공격 패턴·데미지 오브젝트를 쓰는 타입인지.</summary>
+        public bool UsesCombatPattern =>
+            _itemType == SURVIVORSRUN_ITEM_TYPE.WEAPON ||
+            _itemType == SURVIVORSRUN_ITEM_TYPE.ACTIVE ||
+            _itemType == SURVIVORSRUN_ITEM_TYPE.UNIQUE;
+
+        public bool UsesAttackPattern =>
+            UsesCombatPattern &&
             _attackPattern != SURVIVORSRUN_ATTACK_PATTERN.NONE &&
             _attackPattern != SURVIVORSRUN_ATTACK_PATTERN.CONTACT;
 
+        public bool IsBuffPattern => _attackPattern == SURVIVORSRUN_ATTACK_PATTERN.BUFF;
+
         public bool HasHitEffect => !string.IsNullOrWhiteSpace(_hitEffectPrefabPath);
+
+        public bool IsAtMaxStack(int currentStack) => currentStack >= MaxStack;
+
+        public int GetRemainingStackRoom(int currentStack) => Mathf.Max(0, MaxStack - Mathf.Max(0, currentStack));
     }
 
     /// <summary>
@@ -91,5 +124,9 @@ namespace SHIN
         NONE,
         PASSIVE,
         WEAPON,
+        /// <summary>런 중 획득하는 수동 발동 아이템.</summary>
+        ACTIVE,
+        /// <summary>캐릭터 고정 고유 스킬.</summary>
+        UNIQUE,
     }
 }
