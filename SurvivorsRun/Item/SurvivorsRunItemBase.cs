@@ -130,6 +130,21 @@ namespace SHIN
             return 12f;
         }
 
+        /// <summary>ItemData 히트 이펙트를 DamageObject에 주입.</summary>
+        protected void ApplyHitEffect(SurvivorsRunDamageObject damageObject)
+        {
+            if (damageObject == null)
+                return;
+
+            if (_itemData == null || !_itemData.HasHitEffect)
+            {
+                damageObject.SetHitEffect(null);
+                return;
+            }
+
+            damageObject.SetHitEffect(_itemData.HitEffectPrefabPath, _itemData.HitEffectLifetime);
+        }
+
         /// <summary>
         /// DamagePrefabPath 없이 임시 검증용 히트박스를 만든다.
         /// Orbit 등 실전 무기는 프리팹 경로를 쓰고, 경로가 없으면 에러 로그 후 생성하지 않는다.
@@ -150,6 +165,7 @@ namespace SHIN
                 col.radius = radius;
 
             damageObject.Setup(_owner, ResolveDamage(), ResolveHitCooldown());
+            ApplyHitEffect(damageObject);
             return damageObject;
         }
     }

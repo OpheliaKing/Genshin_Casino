@@ -82,6 +82,7 @@ namespace SHIN
             }
 
             damageObject.Setup(Owner, ResolveDamage(), ResolveHitCooldown());
+            ApplyHitEffect(damageObject);
             damageObject.SetDamageEnabled(true);
             _damageObject = damageObject;
         }

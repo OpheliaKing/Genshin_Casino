@@ -178,7 +178,9 @@ namespace SHIN
                     direction,
                     speed,
                     lifetime,
-                    poolKey);
+                    poolKey,
+                    ItemData != null ? ItemData.HitEffectPrefabPath : null,
+                    ItemData != null ? ItemData.HitEffectLifetime : -1f);
             }
 
             return true;

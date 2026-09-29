@@ -108,6 +108,7 @@ namespace SHIN
                 }
 
                 damageObject.Setup(Owner, damage, hitCooldown);
+                ApplyHitEffect(damageObject);
                 _damageObjects.Add(damageObject);
             }
         }

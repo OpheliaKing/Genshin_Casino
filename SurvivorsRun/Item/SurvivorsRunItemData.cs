@@ -65,10 +65,22 @@ namespace SHIN
         private float _maxRange = 12f;
         public float MaxRange => _maxRange;
 
+        [SerializeField]
+        [Tooltip("명중 시 재생할 히트 이펙트 프리팹 Addressables 주소. 비우면 이펙트 없음.")]
+        private string _hitEffectPrefabPath;
+        public string HitEffectPrefabPath => _hitEffectPrefabPath;
+
+        [SerializeField]
+        [Tooltip("히트 이펙트 수명/안전 상한(초). 0 이하면 HitEffect 컴포넌트 기본값.")]
+        private float _hitEffectLifetime = 1.5f;
+        public float HitEffectLifetime => _hitEffectLifetime;
+
         public bool HasAttackPattern =>
             _itemType == SURVIVORSRUN_ITEM_TYPE.WEAPON &&
             _attackPattern != SURVIVORSRUN_ATTACK_PATTERN.NONE &&
             _attackPattern != SURVIVORSRUN_ATTACK_PATTERN.CONTACT;
+
+        public bool HasHitEffect => !string.IsNullOrWhiteSpace(_hitEffectPrefabPath);
     }
 
     /// <summary>

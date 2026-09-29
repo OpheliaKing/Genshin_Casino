@@ -22,6 +22,8 @@ namespace SHIN
         [SerializeField] private bool _damageEnabled = true;
 
         private SurvivorsRunUnitBase _owner;
+        private string _hitEffectPrefabPath;
+        private float _hitEffectLifetime = -1f;
         private readonly Dictionary<SurvivorsRunUnitBase, float> _hitCooldowns = new();
         private readonly List<SurvivorsRunUnitBase> _pruneBuffer = new();
 
@@ -84,6 +86,16 @@ namespace SHIN
             _damage = Mathf.Max(0, damage);
             _hitCooldown = Mathf.Max(0f, hitCooldown);
             _hitCooldowns.Clear();
+        }
+
+        /// <summary>
+        /// ItemData의 히트 이펙트 주소. 비우면 명중 이펙트 없음.
+        /// lifetime &lt;= 0이면 HitEffect 컴포넌트 기본값.
+        /// </summary>
+        public void SetHitEffect(string prefabPath, float lifetime = -1f)
+        {
+            _hitEffectPrefabPath = string.IsNullOrWhiteSpace(prefabPath) ? null : prefabPath.Trim();
+            _hitEffectLifetime = lifetime;
         }
 
         public void SetDamageEnabled(bool enabled)
@@ -168,7 +180,25 @@ namespace SHIN
             if (_hitCooldown > 0f)
                 _hitCooldowns[target] = _hitCooldown;
 
+            TryPlayHitEffect(other);
             DamageApplied?.Invoke(target);
+        }
+
+        /// <summary>
+        /// 피격 콜라이더 표면에서 이 DamageObject에 가장 가까운 점 = 접촉 근사.
+        /// (적 transform 중심이 아님)
+        /// </summary>
+        private void TryPlayHitEffect(Collider2D other)
+        {
+            if (string.IsNullOrEmpty(_hitEffectPrefabPath) || _owner?.Manager == null)
+                return;
+
+            var origin = (Vector2)transform.position;
+            var pos = other != null
+                ? (Vector3)other.ClosestPoint(origin)
+                : transform.position;
+
+            _owner.Manager.PlayHitEffect(_hitEffectPrefabPath, pos, _hitEffectLifetime);
         }
 
         private float GetDeltaTime()

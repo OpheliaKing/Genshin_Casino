@@ -44,7 +44,9 @@ namespace SHIN
             Vector2 direction,
             float speed,
             float lifetime = -1f,
-            string poolKey = null)
+            string poolKey = null,
+            string hitEffectPrefabPath = null,
+            float hitEffectLifetime = -1f)
         {
             if (_damageObject == null)
                 _damageObject = GetComponent<SurvivorsRunDamageObject>();
@@ -56,6 +58,7 @@ namespace SHIN
             _lifeRemaining = lifetime > 0f ? lifetime : _lifetime;
             _mover.BindTimeOwner(owner);
             _damageObject.Setup(owner, damage, hitCooldown);
+            _damageObject.SetHitEffect(hitEffectPrefabPath, hitEffectLifetime);
             _damageObject.SetDamageEnabled(true);
             _mover.Launch(direction, speed);
             _launched = true;

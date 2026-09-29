@@ -129,6 +129,7 @@ namespace SHIN
             }
 
             damageObject.Setup(Owner, ResolveDamage(), ResolveHitCooldown());
+            ApplyHitEffect(damageObject);
             damageObject.SetDamageEnabled(false);
             _damageObject = damageObject;
         }
@@ -140,6 +141,7 @@ namespace SHIN
 
             ApplyPulseScale();
             _damageObject.Setup(Owner, ResolveDamage(), ResolveHitCooldown());
+            ApplyHitEffect(_damageObject);
             _damageObject.gameObject.SetActive(true);
             _damageObject.SetDamageEnabled(true);
             _hitRemaining = PulseHitDuration;
