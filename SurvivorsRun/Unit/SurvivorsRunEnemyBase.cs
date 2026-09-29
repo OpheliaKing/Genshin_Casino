@@ -70,6 +70,7 @@ namespace SHIN
         protected override void OnDied(SurvivorsRunUnitBase killer)
         {
             Manager?.ClearAttackTargetIfMatch(this);
+            Manager?.NotifyEnemyKilled(this);
             base.OnDied(killer);
             Manager?.DespawnEnemy(this);
         }

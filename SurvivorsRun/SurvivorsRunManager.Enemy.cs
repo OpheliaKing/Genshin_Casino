@@ -299,7 +299,7 @@ namespace SHIN
             if (life <= 0)
             {
                 StopEnemySpawning();
-                Debug.Log("[SurvivorsRun] Life 0 — 세션 패배(UI는 이후 연결).");
+                ShowDefeatUi();
             }
         }
 

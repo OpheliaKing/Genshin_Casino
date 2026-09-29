@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 
 namespace SHIN
@@ -29,6 +30,9 @@ namespace SHIN
         public SurvivorsRunManager Manager => _manager;
         public bool IsDead => _isDead || _hp <= 0;
 
+        /// <summary>현재 HP, MaxHP.</summary>
+        public event Action<int, int> HpChanged;
+
         public void BindManager(SurvivorsRunManager manager)
         {
             _manager = manager;
@@ -51,6 +55,19 @@ namespace SHIN
             _attackSpeed = Mathf.Max(0f, attackSpeed);
             _characterSpeed = 1f;
             _isDead = false;
+            HpChanged?.Invoke(_hp, _maxHp);
+        }
+
+        /// <summary>풀 재사용·재시작 시 HP만 풀피로 돌린다.</summary>
+        public void RestoreFullHp()
+        {
+            if (_maxHp <= 0)
+                _maxHp = 1;
+            _hp = _maxHp;
+            _isDead = false;
+            if (!gameObject.activeSelf)
+                gameObject.SetActive(true);
+            HpChanged?.Invoke(_hp, _maxHp);
         }
 
         public void SetMoveSpeed(float moveSpeed)
@@ -91,6 +108,7 @@ namespace SHIN
                 $"[SurvivorsRun] HP {_tid ?? name}: -{damage} → {_hp}/{_maxHp}" +
                 (attacker != null ? $" (by {attacker.Tid ?? attacker.name})" : string.Empty),
                 this);
+            HpChanged?.Invoke(_hp, _maxHp);
             OnDamaged(damage, attacker);
 
             if (_hp <= 0)

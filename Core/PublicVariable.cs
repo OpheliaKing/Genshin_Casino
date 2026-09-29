@@ -81,6 +81,14 @@ namespace SHIN
             public const string SurvivorsRunItemDataSO = "Assets/Addressables/SO/SurvivorsRunItemDataSO.asset";
             public const string SurvivorsRunTargetObject =
                 "Assets/Addressables/Prefab/InGame/SurvivorsRun/TargetObject/TargetObject.prefab";
+            public const string SurvivorsRunInGameUI =
+                "Assets/Addressables/Prefab/InGame/SurvivorsRun/UI/SurvivorsRunInGameUI.prefab";
+            public const string SurvivorsRunLevelUpUI =
+                "Assets/Addressables/Prefab/InGame/SurvivorsRun/UI/SurvivorsRunLevelUpUI.prefab";
+            public const string SurvivorsRunResultUI =
+                "Assets/Addressables/Prefab/InGame/SurvivorsRun/UI/SurvivorsRunResultUI.prefab";
+            public const string SurvivorsRunPauseUI =
+                "Assets/Addressables/Prefab/InGame/SurvivorsRun/UI/SurvivorsRunPauseUI.prefab";
             /// <summary>타이틀 BGM. 에셋 추가 후 GameManager._titleBgmAddress에 이 경로를 넣는다.</summary>
             public const string TitleBgm = "Assets/Addressables/Audio/BGM/bgm_title_001.mp3";
         }

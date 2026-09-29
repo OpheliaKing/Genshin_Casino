@@ -108,6 +108,7 @@ namespace SHIN
                 BindCameraFixed();
                 SetPlayerControlEnabled(false);
                 await EnsureTargetingObjectAsync();
+                await ShowInGameHudAsync();
                 await StartEnemySpawningAsync();
             }
         }
@@ -266,6 +267,7 @@ namespace SHIN
 
         private void OnDestroy()
         {
+            UnbindRunUiEvents();
             ReleaseAllEnemies();
             ReleasePlayerInstance();
             ReleaseTargetingObject();

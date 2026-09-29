@@ -16,6 +16,7 @@ namespace SHIN
         private void Update()
         {
             TickTargetClick();
+            TickEmergencySkillCooldown();
         }
 
         private void SetPlayerControlEnabled(bool enabled)
