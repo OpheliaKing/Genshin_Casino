@@ -20,21 +20,51 @@ namespace SHIN
             if (string.IsNullOrWhiteSpace(address))
                 return;
 
-            _ = PlayHitEffectAsync(address.Trim(), worldPosition, lifetime);
+            _ = PlayHitEffectAsync(address.Trim(), worldPosition, lifetime, null);
         }
 
-        private async Task PlayHitEffectAsync(string address, Vector3 worldPosition, float lifetime)
+        /// <summary>
+        /// 이펙트를 스폰하고 핸들을 반환한다. followParent가 있으면 자식으로 붙여 따라다니게 한다.
+        /// </summary>
+        public Task<SurvivorsRunHitEffect> PlayHitEffectAsync(
+            string address,
+            Vector3 worldPosition,
+            float lifetime = -1f,
+            Transform followParent = null)
+        {
+            if (string.IsNullOrWhiteSpace(address))
+                return Task.FromResult<SurvivorsRunHitEffect>(null);
+
+            return PlayHitEffectInternalAsync(address.Trim(), worldPosition, lifetime, followParent);
+        }
+
+        private async Task<SurvivorsRunHitEffect> PlayHitEffectInternalAsync(
+            string address,
+            Vector3 worldPosition,
+            float lifetime,
+            Transform followParent)
         {
             var prefab = await EnsureHitEffectPrefabAsync(address);
             if (this == null || prefab == null)
-                return;
+                return null;
 
-            var instance = RentFromPrefab(address, prefab, transform, activate: false);
+            var parent = followParent != null ? followParent : transform;
+            var instance = RentFromPrefab(address, prefab, parent, activate: false);
             if (instance == null)
-                return;
+                return null;
 
-            instance.transform.position = worldPosition;
-            instance.transform.rotation = Quaternion.identity;
+            if (followParent != null)
+            {
+                instance.transform.SetParent(followParent, false);
+                instance.transform.localPosition = Vector3.zero;
+                instance.transform.localRotation = Quaternion.identity;
+            }
+            else
+            {
+                instance.transform.position = worldPosition;
+                instance.transform.rotation = Quaternion.identity;
+            }
+
             instance.SetActive(true);
 
             var effect = instance.GetComponent<SurvivorsRunHitEffect>();
@@ -46,10 +76,12 @@ namespace SHIN
                 Debug.LogError(
                     $"[SurvivorsRunManager] 히트 이펙트 프리팹에 SurvivorsRunHitEffect가 없습니다. path={address}");
                 ReturnPooled(address, instance);
-                return;
+                return null;
             }
 
-            effect.Play(this, worldPosition, address, lifetime);
+            var playPos = followParent != null ? followParent.position : worldPosition;
+            effect.Play(this, playPos, address, lifetime);
+            return effect;
         }
 
         private async Task<GameObject> EnsureHitEffectPrefabAsync(string address)

@@ -86,6 +86,13 @@ namespace SHIN
         private float _hitEffectLifetime = 1.5f;
         public float HitEffectLifetime => _hitEffectLifetime;
 
+        [SerializeField]
+        [Tooltip("ACTIVE/UNIQUE 발동 시 재생할 이펙트 Addressables 주소. BUFF면 지속시간 동안 루프.")]
+        private string _activateEffectPrefabPath;
+        public string ActivateEffectPrefabPath => _activateEffectPrefabPath;
+
+        public bool HasActivateEffect => !string.IsNullOrWhiteSpace(_activateEffectPrefabPath);
+
         /// <summary>자동 무기(WEAPON)로 장착·발동 가능한 공격 패턴인지.</summary>
         public bool HasAttackPattern =>
             _itemType == SURVIVORSRUN_ITEM_TYPE.WEAPON &&

@@ -5,6 +5,7 @@ namespace SHIN
 {
     /// <summary>
     /// 플레이어 전투 배율(공속·사거리). 버프 아이템이 여기에 값을 쌓는다.
+    /// 같은 Stat은 중첩하지 않고 Multiplier·Remaining을 갱신(리셋)한다.
     /// </summary>
     public class SurvivorsRunPlayerCombatMods : MonoBehaviour
     {
@@ -47,10 +48,27 @@ namespace SHIN
             }
         }
 
+        /// <summary>
+        /// 버프 적용. 같은 Stat이 이미 있으면 덮어쓰고 지속시간을 다시 채운다.
+        /// </summary>
         public void ApplyBuff(SURVIVORSRUN_BUFF_STAT stat, float multiplier, float duration)
         {
             if (stat == SURVIVORSRUN_BUFF_STAT.NONE || multiplier <= 0f || duration <= 0f)
                 return;
+
+            for (var i = 0; i < _buffs.Count; i++)
+            {
+                if (_buffs[i].Stat != stat)
+                    continue;
+
+                _buffs[i] = new TimedBuff
+                {
+                    Stat = stat,
+                    Multiplier = multiplier,
+                    Remaining = duration,
+                };
+                return;
+            }
 
             _buffs.Add(new TimedBuff
             {
@@ -67,14 +85,13 @@ namespace SHIN
 
         private float ResolveMult(SURVIVORSRUN_BUFF_STAT stat)
         {
-            var mult = 1f;
             for (var i = 0; i < _buffs.Count; i++)
             {
                 if (_buffs[i].Stat == stat)
-                    mult *= _buffs[i].Multiplier;
+                    return Mathf.Max(0.01f, _buffs[i].Multiplier);
             }
 
-            return Mathf.Max(0.01f, mult);
+            return 1f;
         }
     }
 }

@@ -57,7 +57,7 @@ namespace SHIN
 
             if (pattern == SURVIVORSRUN_ATTACK_PATTERN.BUFF)
             {
-                count++; // fireCooldown
+                count += 2; // fireCooldown + activateEffectPrefabPath
                 var effects = property.FindPropertyRelative("_effects");
                 return count * line + EditorGUI.GetPropertyHeight(effects, true) + VerticalSpacing;
             }
@@ -88,6 +88,7 @@ namespace SHIN
             if (pattern == SURVIVORSRUN_ATTACK_PATTERN.BUFF)
             {
                 DrawProp(ref y, x, width, property, "_fireCooldown");
+                DrawProp(ref y, x, width, property, "_activateEffectPrefabPath");
                 DrawEffectsList(ref y, x, width, property);
                 return;
             }

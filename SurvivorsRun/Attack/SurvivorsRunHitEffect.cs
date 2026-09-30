@@ -82,6 +82,17 @@ namespace SHIN
             Despawn();
         }
 
+        public bool IsPlaying => _playing && !_despawning;
+
+        /// <summary>재생 중인 이펙트의 남은 수명만 다시 채운다. (버프 리셋용)</summary>
+        public void RefreshLifetime(float lifetime)
+        {
+            if (!IsPlaying || lifetime <= 0f)
+                return;
+
+            _lifeRemaining = lifetime;
+        }
+
         private void Update()
         {
             if (!_playing || _despawning)
