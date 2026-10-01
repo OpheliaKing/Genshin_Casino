@@ -14,9 +14,6 @@ namespace SHIN
         [SerializeField]
         [Tooltip("우측 스폰 시 카메라/맵 오른쪽에서 얼마나 밖으로 둘지.")]
         private float _rightSpawnPadding = 1.5f;
-        [SerializeField]
-        [Tooltip("우측 스폰 Y 랜덤 시 화면 상하 inset.")]
-        private float _rightSpawnVerticalInset = 0.5f;
 
         private SurvivorsRunEnemySO _enemySo;
         private SurvivorsRunEnemySpawner _enemySpawner;
@@ -187,9 +184,10 @@ namespace SHIN
         }
 
         /// <summary>
-        /// 고정 디펜스 스폰: 화면/맵 오른쪽 + Y 랜덤.
+        /// 고정 디펜스 스폰: 화면/맵 오른쪽 + 맵 enemySpawn Y 레인.
         /// </summary>
-        public bool TryGetEnemySpawnPosition(out Vector3 position)
+        /// <param name="useSpawnLaneCenterY">true면 Y를 레인 중앙(보스용).</param>
+        public bool TryGetEnemySpawnPosition(out Vector3 position, bool useSpawnLaneCenterY = false)
         {
             position = default;
             EnsureEnemyRuntimeRefs();
@@ -198,55 +196,41 @@ namespace SHIN
             if (cam == null && _activeMap == null)
                 return false;
 
-            float minY;
-            float maxY;
             float spawnX;
+            float spawnY;
 
             if (cam != null)
             {
-                GetCameraHalfExtents(cam, out var halfW, out var halfH);
-                var camPos = cam.transform.position;
-                var inset = Mathf.Max(0f, _rightSpawnVerticalInset);
-                minY = camPos.y - halfH + inset;
-                maxY = camPos.y + halfH - inset;
-                if (minY > maxY)
-                {
-                    minY = camPos.y - halfH;
-                    maxY = camPos.y + halfH;
-                }
-
-                spawnX = camPos.x + halfW + Mathf.Max(0.1f, _rightSpawnPadding);
+                GetCameraHalfExtents(cam, out var halfW, out _);
+                spawnX = cam.transform.position.x + halfW + Mathf.Max(0.1f, _rightSpawnPadding);
             }
             else
             {
                 _activeMap.GetClampLocal(out var minLocal, out var maxLocal);
                 var minWorld = _activeMap.transform.TransformPoint(new Vector3(minLocal.x, minLocal.y, 0f));
                 var maxWorld = _activeMap.transform.TransformPoint(new Vector3(maxLocal.x, maxLocal.y, 0f));
-                minY = Mathf.Min(minWorld.y, maxWorld.y);
-                maxY = Mathf.Max(minWorld.y, maxWorld.y);
                 spawnX = Mathf.Max(minWorld.x, maxWorld.x) + Mathf.Max(0.1f, _rightSpawnPadding);
             }
 
             if (_activeMap != null)
             {
-                _activeMap.GetClampLocal(out var minLocal, out var maxLocal);
-                var mapMin = _activeMap.transform.TransformPoint(new Vector3(minLocal.x, minLocal.y, 0f));
-                var mapMax = _activeMap.transform.TransformPoint(new Vector3(maxLocal.x, maxLocal.y, 0f));
-                var mapMinY = Mathf.Min(mapMin.y, mapMax.y);
-                var mapMaxY = Mathf.Max(mapMin.y, mapMax.y);
-                minY = Mathf.Max(minY, mapMinY);
-                maxY = Mathf.Min(maxY, mapMaxY);
-                if (minY > maxY)
-                {
-                    minY = mapMinY;
-                    maxY = mapMaxY;
-                }
+                spawnY = useSpawnLaneCenterY
+                    ? _activeMap.GetEnemySpawnCenterYWorld()
+                    : _activeMap.GetRandomEnemySpawnYWorld();
+            }
+            else if (cam != null)
+            {
+                // 맵 없을 때만 카메라 Y 중앙 폴백
+                spawnY = cam.transform.position.y;
+            }
+            else
+            {
+                return false;
             }
 
-            var y = Random.Range(minY, maxY);
-            position = new Vector3(spawnX, y, 0f);
+            position = new Vector3(spawnX, spawnY, 0f);
             position = ClampEnemyMarchPosition(position);
-            // Clamp가 X를 맵 max 안으로 당기면 화면 안 스폰이 될 수 있어, 우측은 다시 밖으로 둔다.
+
             if (cam != null)
             {
                 GetCameraHalfExtents(cam, out var halfW, out _);
@@ -259,7 +243,7 @@ namespace SHIN
         }
 
         /// <summary>
-        /// 행진 적 위치: Y(및 X max)만 제한. X min은 누수를 위해 막지 않는다.
+        /// 행진 적 위치: X max + 적 스폰 Y 레인. X min은 누수를 위해 막지 않는다.
         /// </summary>
         public Vector3 ClampEnemyMarchPosition(Vector3 position)
         {
@@ -268,7 +252,7 @@ namespace SHIN
 
             _activeMap.GetClampLocal(out var minLocal, out var maxLocal);
             var local = _activeMap.transform.InverseTransformPoint(position);
-            local.y = Mathf.Clamp(local.y, minLocal.y, maxLocal.y);
+            local.y = Mathf.Clamp(local.y, _activeMap.EnemySpawnYMinLocal, _activeMap.EnemySpawnYMaxLocal);
             local.x = Mathf.Min(local.x, maxLocal.x);
             local.z = 0f;
             return _activeMap.transform.TransformPoint(local);
@@ -285,16 +269,34 @@ namespace SHIN
             return local.x <= minLocal.x;
         }
 
-        /// <summary>적이 왼쪽을 통과했을 때 라이프 감소 후 풀 반환.</summary>
+        /// <summary>
+        /// 적이 왼쪽을 통과했을 때.
+        /// 일반 적: Life −1 (0이면 패배). 사이클 목표 적(보스): 즉시 패배.
+        /// </summary>
         public void NotifyEnemyLeaked(SurvivorsRunUnitBase enemy)
         {
             if (enemy == null)
                 return;
 
-            var life = _playerInfo.LoseLife(1);
-            Debug.Log($"[SurvivorsRun] 적 누수 → Life={life} (enemy={enemy.Tid})");
+            if (IsRunFinished)
+                return;
+
+            var isCycleBoss = _activeBoss != null && ReferenceEquals(enemy, _activeBoss);
+            if (isCycleBoss)
+                _activeBoss = null;
 
             DespawnEnemy(enemy);
+
+            if (isCycleBoss)
+            {
+                Debug.Log($"[SurvivorsRun] 사이클 목표 적 누수 → 패배 (enemy={enemy.Tid})");
+                StopEnemySpawning();
+                ShowDefeatUi();
+                return;
+            }
+
+            var life = _playerInfo.LoseLife(1);
+            Debug.Log($"[SurvivorsRun] 적 누수 → Life={life} (enemy={enemy.Tid})");
 
             if (life <= 0)
             {

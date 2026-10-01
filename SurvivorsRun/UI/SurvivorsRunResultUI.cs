@@ -4,7 +4,7 @@ using UnityEngine.UI;
 
 namespace SHIN
 {
-    /// <summary>Life 0 패배 결과. 다시하기 / 로비.</summary>
+    /// <summary>패배/클리어 결과. 다시하기 / 로비.</summary>
     public class SurvivorsRunResultUI : UIBase
     {
         [SerializeField] private TextMeshProUGUI _titleText;
@@ -32,6 +32,26 @@ namespace SHIN
                 var info = manager.PlayerInfo;
                 _detailText.text = $"Lv.{info.Level}  ·  Kills {info.KillCount}";
             }
+
+            if (_retryButton != null)
+                _retryButton.gameObject.SetActive(true);
+        }
+
+        public void SetupClear(SurvivorsRunManager manager)
+        {
+            EnsureBuilt();
+            _manager = manager;
+            if (_titleText != null)
+                _titleText.text = "클리어";
+            if (_detailText != null && manager?.PlayerInfo != null)
+            {
+                var info = manager.PlayerInfo;
+                var gold = manager.ClearGoldReward;
+                _detailText.text = $"Lv.{info.Level}  ·  Kills {info.KillCount}\n+{gold} 칩";
+            }
+
+            if (_retryButton != null)
+                _retryButton.gameObject.SetActive(true);
         }
 
         private void EnsureBuilt()

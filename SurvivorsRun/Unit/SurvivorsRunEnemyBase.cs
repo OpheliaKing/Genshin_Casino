@@ -71,6 +71,7 @@ namespace SHIN
         {
             Manager?.ClearAttackTargetIfMatch(this);
             Manager?.NotifyEnemyKilled(this);
+            Manager?.NotifyBossDefeated(this);
             base.OnDied(killer);
             Manager?.DespawnEnemy(this);
         }

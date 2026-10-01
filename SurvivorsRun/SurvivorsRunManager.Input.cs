@@ -15,6 +15,7 @@ namespace SHIN
 
         private void Update()
         {
+            TickCycle(Time.deltaTime);
             TickTargetClick();
             TickEmergencySkillCooldown();
         }

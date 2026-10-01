@@ -113,6 +113,7 @@ namespace SHIN
                 SetPlayerControlEnabled(false);
                 await EnsureTargetingObjectAsync();
                 await ShowInGameHudAsync();
+                await BeginCycleTimerAsync();
                 await StartEnemySpawningAsync();
             }
         }

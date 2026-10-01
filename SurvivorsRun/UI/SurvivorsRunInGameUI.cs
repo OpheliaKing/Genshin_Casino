@@ -25,6 +25,7 @@ namespace SHIN
         [SerializeField] private TextMeshProUGUI _lifeText;
         [SerializeField] private TextMeshProUGUI _levelText;
         [SerializeField] private TextMeshProUGUI _killText;
+        [SerializeField] private TextMeshProUGUI _timerText;
         [SerializeField] private TextMeshProUGUI _hpText;
         [SerializeField] private Slider _expSlider;
         [SerializeField] private Slider _hpSlider;
@@ -34,6 +35,9 @@ namespace SHIN
         [SerializeField] private Image _emergencyCooldownFill;
         [SerializeField] private TextMeshProUGUI _emergencyLabel;
         [SerializeField] private Transform _activeSkillRow;
+        [SerializeField] private GameObject _bossWarningRoot;
+        [SerializeField] private CanvasGroup _bossWarningGroup;
+        [SerializeField] private TextMeshProUGUI _bossWarningText;
 
         private SurvivorsRunManager _manager;
         private SurvivorsRunPlayerInfo _playerInfo;
@@ -42,6 +46,9 @@ namespace SHIN
         private readonly List<TextMeshProUGUI> _itemStacks = new();
         private readonly List<SkillSlotView> _activeSlots = new();
         private bool _built;
+        private float _bossWarningTimer;
+        private float _bossWarningDuration;
+        private bool _bossWarningActive;
 
         public override void OnShow()
         {
@@ -84,6 +91,58 @@ namespace SHIN
         }
 
         public void RefreshEmergencyVisual() => RefreshSkillVisuals();
+
+        /// <summary>보스 페이즈 진입 시 중앙 워닝. duration초 후 자동 숨김.</summary>
+        public void ShowBossWarning(float duration = 2f, string message = null)
+        {
+            EnsureBuilt();
+            EnsureBossWarning();
+
+            if (_bossWarningRoot == null)
+                return;
+
+            if (_bossWarningText != null)
+                _bossWarningText.text = string.IsNullOrWhiteSpace(message) ? "경고\n보스 출현" : message;
+
+            _bossWarningDuration = Mathf.Max(0.35f, duration);
+            _bossWarningTimer = 0f;
+            _bossWarningActive = true;
+            _bossWarningRoot.SetActive(true);
+            if (_bossWarningGroup != null)
+                _bossWarningGroup.alpha = 1f;
+        }
+
+        private void HideBossWarning()
+        {
+            _bossWarningActive = false;
+            _bossWarningTimer = 0f;
+            if (_bossWarningGroup != null)
+                _bossWarningGroup.alpha = 0f;
+            if (_bossWarningRoot != null)
+                _bossWarningRoot.SetActive(false);
+        }
+
+        private void TickBossWarning(float dt)
+        {
+            if (!_bossWarningActive)
+                return;
+
+            _bossWarningTimer += dt;
+            var t = _bossWarningTimer;
+            var dur = _bossWarningDuration;
+            // 앞 60% 유지, 뒤 40% 페이드 아웃
+            var hold = dur * 0.6f;
+            if (_bossWarningGroup != null)
+            {
+                if (t <= hold)
+                    _bossWarningGroup.alpha = 1f;
+                else
+                    _bossWarningGroup.alpha = Mathf.Clamp01(1f - (t - hold) / Mathf.Max(0.01f, dur - hold));
+            }
+
+            if (t >= dur)
+                HideBossWarning();
+        }
 
         private void RefreshSkillVisuals()
         {
@@ -149,8 +208,35 @@ namespace SHIN
 
         private void Update()
         {
-            if (_manager != null)
-                RefreshSkillVisuals();
+            if (_manager == null)
+                return;
+
+            RefreshSkillVisuals();
+            RefreshTimer();
+            TickBossWarning(Time.unscaledDeltaTime);
+        }
+
+        private void RefreshTimer()
+        {
+            if (_timerText == null || _manager == null)
+                return;
+
+            if (_manager.IsRunFinished)
+            {
+                _timerText.text = "END";
+                return;
+            }
+
+            if (_manager.IsBossPhase)
+            {
+                _timerText.text = "BOSS";
+                return;
+            }
+
+            var remain = Mathf.CeilToInt(_manager.CycleRemaining);
+            var m = remain / 60;
+            var s = remain % 60;
+            _timerText.text = $"{m:0}:{s:00}";
         }
 
         private void BindPlayerUnit(SurvivorsRunUnitBase player)
@@ -189,6 +275,7 @@ namespace SHIN
             }
 
             _manager = null;
+            HideBossWarning();
         }
 
         private void OnLifeChanged(int life)
@@ -304,13 +391,67 @@ namespace SHIN
 
             if (_lifeText != null && _pauseButton != null)
             {
+                EnsureTimerLabel();
+                EnsureBossWarning();
                 EnsureActiveSlotsExist();
                 WireButtons();
                 return;
             }
 
             BuildRuntimeTree();
+            EnsureBossWarning();
             WireButtons();
+        }
+
+        private void EnsureBossWarning()
+        {
+            if (_bossWarningRoot != null)
+            {
+                if (_bossWarningGroup == null)
+                    _bossWarningGroup = _bossWarningRoot.GetComponent<CanvasGroup>()
+                        ?? _bossWarningRoot.AddComponent<CanvasGroup>();
+                _bossWarningRoot.SetActive(false);
+                return;
+            }
+
+            var root = SurvivorsRunUiBuild.Child(transform, "BossWarning");
+            SurvivorsRunUiBuild.StretchFull(root);
+            SurvivorsRunUiBuild.AddImage(root, new Color(0.45f, 0.05f, 0.08f, 0.35f), raycast: false);
+
+            var panel = SurvivorsRunUiBuild.Child(root.transform, "Panel");
+            SurvivorsRunUiBuild.SetAnchored(panel.GetComponent<RectTransform>(),
+                new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
+                Vector2.zero, new Vector2(520f, 160f));
+            SurvivorsRunUiBuild.AddImage(panel, new Color(0.12f, 0.04f, 0.06f, 0.92f), raycast: false);
+
+            var textGo = SurvivorsRunUiBuild.Child(panel.transform, "Text");
+            SurvivorsRunUiBuild.StretchFull(textGo);
+            _bossWarningText = SurvivorsRunUiBuild.AddText(textGo, "경고\n보스 출현", 42f, TextAlignmentOptions.Center);
+            _bossWarningText.color = new Color(1f, 0.45f, 0.4f, 1f);
+
+            _bossWarningGroup = root.GetComponent<CanvasGroup>();
+            if (_bossWarningGroup == null)
+                _bossWarningGroup = root.AddComponent<CanvasGroup>();
+            _bossWarningGroup.alpha = 0f;
+            _bossWarningGroup.blocksRaycasts = false;
+            _bossWarningGroup.interactable = false;
+
+            _bossWarningRoot = root;
+            _bossWarningRoot.SetActive(false);
+            SurvivorsRunUiBuild.ApplyKoreanFontRecursive(root.transform);
+        }
+
+        private void EnsureTimerLabel()
+        {
+            if (_timerText != null)
+                return;
+
+            var top = transform.Find("TopBar");
+            if (top == null)
+                return;
+
+            _timerText = CreateLabel(top, "Timer", "2:00", TextAlignmentOptions.Center, new Vector2(0.5f, 0.5f),
+                new Vector2(0.5f, 0.5f), new Vector2(0f, 0f), new Vector2(120f, 48f));
         }
 
         private void WireButtons()
@@ -371,8 +512,11 @@ namespace SHIN
             var expGo = SurvivorsRunUiBuild.Child(top.transform, "ExpSlider");
             var expRt = expGo.GetComponent<RectTransform>();
             SurvivorsRunUiBuild.SetAnchored(expRt, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(0f, 0.5f),
-                new Vector2(340f, 0f), new Vector2(360f, 22f));
+                new Vector2(340f, 0f), new Vector2(280f, 22f));
             _expSlider = CreateSlider(expGo, new Color(0.35f, 0.85f, 0.55f, 1f));
+
+            _timerText = CreateLabel(top.transform, "Timer", "2:00", TextAlignmentOptions.Center, new Vector2(0.5f, 0.5f),
+                new Vector2(0.5f, 0.5f), new Vector2(0f, 0f), new Vector2(120f, 48f));
 
             _killText = CreateLabel(top.transform, "Kills", "Kills 0", TextAlignmentOptions.Right, new Vector2(1f, 0.5f),
                 new Vector2(1f, 0.5f), new Vector2(-120f, 0f), new Vector2(200f, 48f));

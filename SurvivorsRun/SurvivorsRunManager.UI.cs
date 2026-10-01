@@ -35,7 +35,7 @@ namespace SHIN
         {
             get
             {
-                if (_defeatShown || string.IsNullOrEmpty(_uniqueSkillTid))
+                if (IsRunFinished || string.IsNullOrEmpty(_uniqueSkillTid))
                     return false;
 
                 var item = ResolveUniqueSkillItem();
@@ -101,6 +101,7 @@ namespace SHIN
             BindRunUiEvents();
             _inGameUi.Bind(this);
             _defeatShown = false;
+            ResetCycleState();
             _pendingLevelUps = 0;
             _levelUpShowing = false;
             _lastSeenLevel = _playerInfo != null ? _playerInfo.Level : 1;
@@ -126,7 +127,7 @@ namespace SHIN
 
         private void OnPlayerLevelChangedForUi(int level)
         {
-            if (_defeatShown)
+            if (IsRunFinished)
             {
                 _lastSeenLevel = level;
                 return;
@@ -147,7 +148,7 @@ namespace SHIN
         /// <summary>적 처치 시 호출. Kill/Exp 반영.</summary>
         public void NotifyEnemyKilled(SurvivorsRunUnitBase enemy)
         {
-            if (_defeatShown || enemy == null)
+            if (IsRunFinished || enemy == null)
                 return;
 
             _playerInfo.AddKill(1);
@@ -156,7 +157,7 @@ namespace SHIN
 
         private void TryShowNextLevelUp()
         {
-            if (_defeatShown || _levelUpShowing || _pendingLevelUps <= 0)
+            if (IsRunFinished || _levelUpShowing || _pendingLevelUps <= 0)
                 return;
 
             _ = ShowLevelUpUiAsync();
@@ -279,7 +280,7 @@ namespace SHIN
 
         public void OpenPauseUi()
         {
-            if (_defeatShown || _levelUpShowing)
+            if (IsRunFinished || _levelUpShowing)
                 return;
 
             _ = OpenPauseUiAsync();
@@ -317,16 +318,17 @@ namespace SHIN
                 _pauseUi = null;
             }
 
-            if (!_levelUpShowing && !_defeatShown)
+            if (!_levelUpShowing && !IsRunFinished)
                 ResumeFromOverlay();
         }
 
         public void ShowDefeatUi()
         {
-            if (_defeatShown)
+            if (IsRunFinished)
                 return;
 
             _defeatShown = true;
+            _cycleTimerRunning = false;
             StopEnemySpawning();
             ClosePauseUiSilent();
             CloseLevelUpUi();
@@ -403,7 +405,7 @@ namespace SHIN
         /// <summary>고유 스킬(UNIQUE) 수동 발동. HUD 긴급 버튼과 동일 경로.</summary>
         public bool TryActivateEmergencySkill()
         {
-            if (_defeatShown || _pausedByUi || _levelUpShowing)
+            if (IsRunFinished || _pausedByUi || _levelUpShowing)
                 return false;
 
             if (string.IsNullOrEmpty(_uniqueSkillTid) || _playerUnit == null)
@@ -445,7 +447,7 @@ namespace SHIN
 
         public bool TryActivateActiveSkill(int slotIndex)
         {
-            if (_defeatShown || _pausedByUi || _levelUpShowing)
+            if (IsRunFinished || _pausedByUi || _levelUpShowing)
                 return false;
 
             if (_playerUnit == null)
@@ -457,7 +459,7 @@ namespace SHIN
 
         public bool IsActiveSkillReady(int slotIndex)
         {
-            if (_defeatShown)
+            if (IsRunFinished)
                 return false;
 
             var item = GetActiveSkillItem(slotIndex);
@@ -527,6 +529,7 @@ namespace SHIN
             }
 
             _defeatShown = false;
+            await BeginCycleTimerAsync();
             _pendingLevelUps = 0;
             _levelUpShowing = false;
             _inGameUi?.Bind(this);

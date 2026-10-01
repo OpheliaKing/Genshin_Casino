@@ -24,9 +24,17 @@ namespace SHIN
 
         [Header("Spawn")]
         [SerializeField] private Transform _playerSpawnPoint;
+        [SerializeField]
+        [Tooltip("적 스폰·행진 Y 로컬 min. 도로 레인에 맞출 것.")]
+        private float _enemySpawnYMinLocal = -1.5f;
+        [SerializeField]
+        [Tooltip("적 스폰·행진 Y 로컬 max.")]
+        private float _enemySpawnYMaxLocal = 1.5f;
 
         public ClampSource Source => _clampSource;
         public Transform PlayerSpawnPoint => _playerSpawnPoint;
+        public float EnemySpawnYMinLocal => Mathf.Min(_enemySpawnYMinLocal, _enemySpawnYMaxLocal);
+        public float EnemySpawnYMaxLocal => Mathf.Max(_enemySpawnYMinLocal, _enemySpawnYMaxLocal);
 
         public Vector2 ClampMinLocal
         {
@@ -59,6 +67,8 @@ namespace SHIN
                 (_clampMinLocal.x, _clampMaxLocal.x) = (_clampMaxLocal.x, _clampMinLocal.x);
             if (_clampMinLocal.y > _clampMaxLocal.y)
                 (_clampMinLocal.y, _clampMaxLocal.y) = (_clampMaxLocal.y, _clampMinLocal.y);
+            if (_enemySpawnYMinLocal > _enemySpawnYMaxLocal)
+                (_enemySpawnYMinLocal, _enemySpawnYMaxLocal) = (_enemySpawnYMaxLocal, _enemySpawnYMinLocal);
         }
 
         /// <summary>월드 좌표를 맵 clamp 안으로 제한한다.</summary>
@@ -122,6 +132,41 @@ namespace SHIN
                 return _playerSpawnPoint.position;
 
             return transform.position;
+        }
+
+        /// <summary>적 스폰용 Y 로컬 구간.</summary>
+        public void GetEnemySpawnYLocal(out float minY, out float maxY)
+        {
+            minY = EnemySpawnYMinLocal;
+            maxY = EnemySpawnYMaxLocal;
+        }
+
+        /// <summary>적 스폰 Y 랜덤 (월드). 구간이 비면 맵 clamp Y 중앙.</summary>
+        public float GetRandomEnemySpawnYWorld()
+        {
+            var minY = EnemySpawnYMinLocal;
+            var maxY = EnemySpawnYMaxLocal;
+            var localY = Mathf.Approximately(minY, maxY)
+                ? minY
+                : Random.Range(minY, maxY);
+            var world = transform.TransformPoint(new Vector3(0f, localY, 0f));
+            return world.y;
+        }
+
+        /// <summary>적 스폰 Y 구간 중앙 (월드). 보스 스폰용.</summary>
+        public float GetEnemySpawnCenterYWorld()
+        {
+            var localY = (EnemySpawnYMinLocal + EnemySpawnYMaxLocal) * 0.5f;
+            return transform.TransformPoint(new Vector3(0f, localY, 0f)).y;
+        }
+
+        /// <summary>월드 Y를 적 스폰 레인 로컬 Y로 클램프한 월드 좌표.</summary>
+        public Vector3 ClampEnemySpawnY(Vector3 worldPosition)
+        {
+            var local = transform.InverseTransformPoint(worldPosition);
+            local.y = Mathf.Clamp(local.y, EnemySpawnYMinLocal, EnemySpawnYMaxLocal);
+            local.z = 0f;
+            return transform.TransformPoint(local);
         }
 
         /// <summary>맵 clamp 영역의 월드 중심. 카메라 고정용.</summary>
@@ -234,6 +279,21 @@ namespace SHIN
                 Gizmos.color = new Color(0.95f, 0.75f, 0.2f, 0.95f);
                 Gizmos.DrawWireSphere(_playerSpawnPoint.position, 0.35f);
             }
+
+            // 적 스폰 Y 레인
+            var yMin = EnemySpawnYMinLocal;
+            var yMax = EnemySpawnYMaxLocal;
+            var left = min.x;
+            var right = max.x;
+            var bl2 = transform.TransformPoint(new Vector3(left, yMin, 0f));
+            var br2 = transform.TransformPoint(new Vector3(right, yMin, 0f));
+            var tr2 = transform.TransformPoint(new Vector3(right, yMax, 0f));
+            var tl2 = transform.TransformPoint(new Vector3(left, yMax, 0f));
+            Gizmos.color = new Color(1f, 0.35f, 0.25f, 0.85f);
+            Gizmos.DrawLine(bl2, br2);
+            Gizmos.DrawLine(br2, tr2);
+            Gizmos.DrawLine(tr2, tl2);
+            Gizmos.DrawLine(tl2, bl2);
         }
 #endif
     }
