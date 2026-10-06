@@ -97,6 +97,9 @@ namespace SHIN
             _itemRoot = go.transform;
         }
 
+        /// <summary>
+        /// 아이템 기본 피해(배율 미포함). 최종 피해는 DamageObject가 CombatMods.DamageMult를 곱한다.
+        /// </summary>
         protected int ResolveDamage()
         {
             if (_itemData != null && _itemData.BaseDamage > 0)

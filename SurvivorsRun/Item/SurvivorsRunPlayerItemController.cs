@@ -51,13 +51,20 @@ namespace SHIN
             if (itemData == null || _owner == null)
                 return null;
 
-            if (itemData.ItemType == SURVIVORSRUN_ITEM_TYPE.WEAPON && !itemData.HasAttackPattern)
+            if (itemData.IsPassive)
+            {
+                if (!itemData.HasPassiveBuffEffects)
+                {
+                    Debug.LogWarning($"[PlayerItem] 패시브 Effects(버프)가 없습니다: {itemData.Tid}", this);
+                    return null;
+                }
+            }
+            else if (itemData.ItemType == SURVIVORSRUN_ITEM_TYPE.WEAPON && !itemData.HasAttackPattern)
             {
                 Debug.LogWarning($"[PlayerItem] 무기 패턴이 없습니다: {itemData.Tid}", this);
                 return null;
             }
-
-            if (itemData.IsInputTriggered && !itemData.UsesAttackPattern)
+            else if (itemData.IsInputTriggered && !itemData.UsesAttackPattern)
             {
                 Debug.LogWarning($"[PlayerItem] 고유/액티브 패턴이 없습니다: {itemData.Tid}", this);
                 return null;
@@ -74,10 +81,12 @@ namespace SHIN
                 return existing;
             }
 
-            var item = CreateItem(itemData.AttackPattern);
+            var item = CreateItem(itemData);
             if (item == null)
             {
-                Debug.LogWarning($"[PlayerItem] 미지원 패턴: {itemData.AttackPattern} ({itemData.Tid})", this);
+                Debug.LogWarning(
+                    $"[PlayerItem] 미지원 아이템: type={itemData.ItemType}, pattern={itemData.AttackPattern} ({itemData.Tid})",
+                    this);
                 return null;
             }
 
@@ -168,9 +177,15 @@ namespace SHIN
             }
         }
 
-        private static SurvivorsRunItemBase CreateItem(SURVIVORSRUN_ATTACK_PATTERN pattern)
+        private static SurvivorsRunItemBase CreateItem(SurvivorsRunItemData itemData)
         {
-            return pattern switch
+            if (itemData == null)
+                return null;
+
+            if (itemData.IsPassive)
+                return new SurvivorsRunPassiveItem();
+
+            return itemData.AttackPattern switch
             {
                 SURVIVORSRUN_ATTACK_PATTERN.ORBIT => new SurvivorsRunOrbitItem(),
                 SURVIVORSRUN_ATTACK_PATTERN.PULSE => new SurvivorsRunPulseItem(),

@@ -11,6 +11,8 @@ namespace SHIN
         ATTACK_SPEED,
         /// <summary>무기 사거리 배율. 1.3 = 30% 증가.</summary>
         RANGE,
+        /// <summary>피해 배율. 1.3 = 30% 증가.</summary>
+        DAMAGE,
     }
 
     /// <summary>
@@ -38,14 +40,19 @@ namespace SHIN
         public float BuffStackBonus => _buffStackBonus;
 
         [SerializeField]
-        [Tooltip("버프 지속 시간(초).")]
+        [Tooltip("기간제 버프 지속 시간(초). 영구 패시브에서는 무시(0이어도 됨).")]
         private float _buffDuration = 5f;
         public float BuffDuration => _buffDuration;
 
-        public bool IsBuff =>
-            _pattern == SURVIVORSRUN_ATTACK_PATTERN.BUFF &&
+        /// <summary>스탯·배율만 유효한지(패시브/액티브 공통).</summary>
+        public bool HasBuffStat =>
             _buffStat != SURVIVORSRUN_BUFF_STAT.NONE &&
-            _buffMultiplier > 0f &&
+            _buffMultiplier > 0f;
+
+        /// <summary>기간제 버프(ACTIVE 발동용). duration &gt; 0 필요.</summary>
+        public bool IsBuff =>
+            (_pattern == SURVIVORSRUN_ATTACK_PATTERN.BUFF || _pattern == SURVIVORSRUN_ATTACK_PATTERN.NONE) &&
+            HasBuffStat &&
             _buffDuration > 0f;
 
         /// <summary>스택을 반영한 최종 버프 배율.</summary>

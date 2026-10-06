@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -38,6 +40,15 @@ namespace SHIN
         [SerializeField] private GameObject _bossWarningRoot;
         [SerializeField] private CanvasGroup _bossWarningGroup;
         [SerializeField] private TextMeshProUGUI _bossWarningText;
+        [SerializeField] private Image _bossWarningOverlay;
+        [SerializeField] private Image _bossWarningPanel;
+
+        private static readonly Color BossOverlayColor = new(0.45f, 0.05f, 0.08f, 0.35f);
+        private static readonly Color BossPanelColor = new(0.12f, 0.04f, 0.06f, 0.92f);
+        private static readonly Color BossTextColor = new(1f, 0.45f, 0.4f, 1f);
+        private static readonly Color StartOverlayColor = new(0.08f, 0.06f, 0.02f, 0.28f);
+        private static readonly Color StartPanelColor = new(0.14f, 0.1f, 0.05f, 0.92f);
+        private static readonly Color StartTextColor = new(1f, 0.92f, 0.55f, 1f);
 
         private SurvivorsRunManager _manager;
         private SurvivorsRunPlayerInfo _playerInfo;
@@ -95,14 +106,63 @@ namespace SHIN
         /// <summary>보스 페이즈 진입 시 중앙 워닝. duration초 후 자동 숨김.</summary>
         public void ShowBossWarning(float duration = 2f, string message = null)
         {
+            ShowCenterAnnounce(
+                duration,
+                string.IsNullOrWhiteSpace(message) ? "경고\n보스 출현" : message,
+                BossTextColor,
+                BossOverlayColor,
+                BossPanelColor);
+        }
+
+        /// <summary>런 시작 START 문구. unscaled 시간 기준 await.</summary>
+        public Task PlayStartAnnounceAsync(float duration = 1.25f, string message = "START")
+        {
+            return PlayCenterAnnounceAsync(
+                duration,
+                message,
+                StartTextColor,
+                StartOverlayColor,
+                StartPanelColor);
+        }
+
+        /// <summary>중앙 안내 문구를 띄우고 duration초 후 자동 숨김까지 대기한다.</summary>
+        public async Task PlayCenterAnnounceAsync(
+            float duration,
+            string message,
+            Color textColor,
+            Color overlayColor,
+            Color panelColor)
+        {
+            ShowCenterAnnounce(duration, message, textColor, overlayColor, panelColor);
+            await Task.Delay(TimeSpan.FromSeconds(Mathf.Max(0.1f, duration)));
+            if (this == null)
+                return;
+            HideBossWarning();
+        }
+
+        private void ShowCenterAnnounce(
+            float duration,
+            string message,
+            Color textColor,
+            Color overlayColor,
+            Color panelColor)
+        {
             EnsureBuilt();
             EnsureBossWarning();
 
             if (_bossWarningRoot == null)
                 return;
 
+            if (_bossWarningOverlay != null)
+                _bossWarningOverlay.color = overlayColor;
+            if (_bossWarningPanel != null)
+                _bossWarningPanel.color = panelColor;
+
             if (_bossWarningText != null)
-                _bossWarningText.text = string.IsNullOrWhiteSpace(message) ? "경고\n보스 출현" : message;
+            {
+                _bossWarningText.text = string.IsNullOrWhiteSpace(message) ? "START" : message;
+                _bossWarningText.color = textColor;
+            }
 
             _bossWarningDuration = Mathf.Max(0.35f, duration);
             _bossWarningTimer = 0f;
@@ -410,24 +470,33 @@ namespace SHIN
                 if (_bossWarningGroup == null)
                     _bossWarningGroup = _bossWarningRoot.GetComponent<CanvasGroup>()
                         ?? _bossWarningRoot.AddComponent<CanvasGroup>();
+                if (_bossWarningOverlay == null)
+                    _bossWarningOverlay = _bossWarningRoot.GetComponent<Image>();
+                if (_bossWarningPanel == null)
+                {
+                    var panelTf = _bossWarningRoot.transform.Find("Panel");
+                    if (panelTf != null)
+                        _bossWarningPanel = panelTf.GetComponent<Image>();
+                }
+
                 _bossWarningRoot.SetActive(false);
                 return;
             }
 
             var root = SurvivorsRunUiBuild.Child(transform, "BossWarning");
             SurvivorsRunUiBuild.StretchFull(root);
-            SurvivorsRunUiBuild.AddImage(root, new Color(0.45f, 0.05f, 0.08f, 0.35f), raycast: false);
+            _bossWarningOverlay = SurvivorsRunUiBuild.AddImage(root, BossOverlayColor, raycast: false);
 
             var panel = SurvivorsRunUiBuild.Child(root.transform, "Panel");
             SurvivorsRunUiBuild.SetAnchored(panel.GetComponent<RectTransform>(),
                 new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
                 Vector2.zero, new Vector2(520f, 160f));
-            SurvivorsRunUiBuild.AddImage(panel, new Color(0.12f, 0.04f, 0.06f, 0.92f), raycast: false);
+            _bossWarningPanel = SurvivorsRunUiBuild.AddImage(panel, BossPanelColor, raycast: false);
 
             var textGo = SurvivorsRunUiBuild.Child(panel.transform, "Text");
             SurvivorsRunUiBuild.StretchFull(textGo);
             _bossWarningText = SurvivorsRunUiBuild.AddText(textGo, "경고\n보스 출현", 42f, TextAlignmentOptions.Center);
-            _bossWarningText.color = new Color(1f, 0.45f, 0.4f, 1f);
+            _bossWarningText.color = BossTextColor;
 
             _bossWarningGroup = root.GetComponent<CanvasGroup>();
             if (_bossWarningGroup == null)

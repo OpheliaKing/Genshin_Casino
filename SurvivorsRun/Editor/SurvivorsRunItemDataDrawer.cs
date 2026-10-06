@@ -47,6 +47,13 @@ namespace SHIN
             var count = 5; // tid, name, description, icon, itemType
 
             var itemType = (SURVIVORSRUN_ITEM_TYPE)property.FindPropertyRelative("_itemType").intValue;
+            if (itemType == SURVIVORSRUN_ITEM_TYPE.PASSIVE)
+            {
+                count += 1; // maxStack
+                var effects = property.FindPropertyRelative("_effects");
+                return count * line + EditorGUI.GetPropertyHeight(effects, true) + VerticalSpacing;
+            }
+
             if (!ShowsCombatFields(itemType))
                 return count * line;
 
@@ -75,6 +82,13 @@ namespace SHIN
             DrawProp(ref y, x, width, property, "_itemType");
 
             var itemType = (SURVIVORSRUN_ITEM_TYPE)property.FindPropertyRelative("_itemType").intValue;
+            if (itemType == SURVIVORSRUN_ITEM_TYPE.PASSIVE)
+            {
+                DrawProp(ref y, x, width, property, "_maxStack");
+                DrawEffectsList(ref y, x, width, property);
+                return;
+            }
+
             if (!ShowsCombatFields(itemType))
                 return;
 

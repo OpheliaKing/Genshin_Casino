@@ -115,6 +115,20 @@ namespace SHIN
             _hitCooldown = Mathf.Max(0f, hitCooldown);
         }
 
+        /// <summary>기본 피해 × 소유자 DamageMult(영구 패시브·기간제 버프).</summary>
+        private int ResolveFinalDamage()
+        {
+            var damage = _damage;
+            if (_owner == null)
+                return damage;
+
+            var mods = _owner.GetComponent<SurvivorsRunPlayerCombatMods>();
+            if (mods == null)
+                return damage;
+
+            return Mathf.Max(0, Mathf.RoundToInt(damage * mods.DamageMult));
+        }
+
         private void Update()
         {
             if (_hitCooldowns.Count == 0)
@@ -174,7 +188,11 @@ namespace SHIN
             if (combat == null)
                 return;
 
-            if (!combat.TryApplyDamage(target, _damage, _owner))
+            var damage = ResolveFinalDamage();
+            if (damage <= 0)
+                return;
+
+            if (!combat.TryApplyDamage(target, damage, _owner))
                 return;
 
             if (_hitCooldown > 0f)

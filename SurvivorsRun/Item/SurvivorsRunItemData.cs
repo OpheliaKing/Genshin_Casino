@@ -116,6 +116,26 @@ namespace SHIN
 
         public bool IsBuffPattern => _attackPattern == SURVIVORSRUN_ATTACK_PATTERN.BUFF;
 
+        public bool IsPassive => _itemType == SURVIVORSRUN_ITEM_TYPE.PASSIVE;
+
+        /// <summary>패시브로 올릴 버프 효과가 하나라도 있는지.</summary>
+        public bool HasPassiveBuffEffects
+        {
+            get
+            {
+                if (_effects == null)
+                    return false;
+
+                for (var i = 0; i < _effects.Count; i++)
+                {
+                    if (_effects[i] != null && _effects[i].HasBuffStat)
+                        return true;
+                }
+
+                return false;
+            }
+        }
+
         public bool HasHitEffect => !string.IsNullOrWhiteSpace(_hitEffectPrefabPath);
 
         public bool IsAtMaxStack(int currentStack) => currentStack >= MaxStack;

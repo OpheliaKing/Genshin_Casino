@@ -212,15 +212,19 @@ namespace SHIN
                 if (item == null)
                     continue;
 
-                // 레벨업: 자동 무기 + 액티브. UNIQUE는 캐릭터 고정이라 제외.
-                if (item.HasAttackPattern ||
-                    (item.ItemType == SURVIVORSRUN_ITEM_TYPE.ACTIVE && item.UsesAttackPattern))
-                {
-                    if (IsOwnedAtMaxStack(item))
-                        continue;
+                // 레벨업: 자동 무기 + 액티브 + 영구 패시브. UNIQUE는 캐릭터 고정이라 제외.
+                var isLevelUpCandidate =
+                    item.IsPassive ||
+                    item.HasAttackPattern ||
+                    (item.ItemType == SURVIVORSRUN_ITEM_TYPE.ACTIVE && item.UsesAttackPattern);
 
-                    pool.Add(item);
-                }
+                if (!isLevelUpCandidate)
+                    continue;
+
+                if (IsOwnedAtMaxStack(item))
+                    continue;
+
+                pool.Add(item);
             }
 
             if (pool.Count == 0)
@@ -506,6 +510,10 @@ namespace SHIN
 
         private async Task RetryAfterDefeatAsync()
         {
+            var uiManager = GameManager.Instance?.UIManager;
+            if (uiManager != null)
+                await uiManager.FadeOutAsync(0.25f);
+
             CloseResultUi();
             ClosePauseUiSilent();
             CloseLevelUpUi();
@@ -529,12 +537,23 @@ namespace SHIN
             }
 
             _defeatShown = false;
-            await BeginCycleTimerAsync();
             _pendingLevelUps = 0;
             _levelUpShowing = false;
             _inGameUi?.Bind(this);
 
+            // 리트라이도 동일: 페이드인 → START → 타이머·스폰
+            PauseForOverlay();
+            if (uiManager != null)
+            {
+                await uiManager.SetFadeAlphaImmediateAsync(1f);
+                await uiManager.FadeInAsync(0.35f);
+            }
+
+            if (_inGameUi != null)
+                await _inGameUi.PlayStartAnnounceAsync();
+
             ResumeFromOverlay();
+            await BeginCycleTimerAsync();
             await StartEnemySpawningAsync();
         }
 

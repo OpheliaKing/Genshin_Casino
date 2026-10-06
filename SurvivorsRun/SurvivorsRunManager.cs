@@ -96,26 +96,48 @@ namespace SHIN
             SetPlayerControlEnabled(false);
 
             var uiManager = GameManager.Instance?.UIManager;
+
+            // 로딩 중 화면을 검정으로 가림 → 준비 후 페이드인 → START → 전투 시작
+            if (uiManager != null)
+                await uiManager.FadeOutAsync(0.25f);
+
             if (uiManager != null && _characterSelectUI != null)
             {
                 uiManager.Close(_characterSelectUI, restoreVisibleStack: false);
                 _characterSelectUI = null;
             }
 
-            // 고정 디펜스: 맵 → 플레이어 고정 스폰 → 카메라 고정 → 이동조작 OFF → 적 스폰
+            // 고정 디펜스: 맵 → 플레이어 고정 스폰 → 카메라 고정 → 이동조작 OFF
             EnableInputMap(InputManager.ActionMapName.SurvivorsRun);
             await EnsureMapAsync();
             await SpawnSelectedCharacterAsync(data);
 
-            if (_playerUnit != null)
+            if (_playerUnit == null)
             {
-                BindCameraFixed();
-                SetPlayerControlEnabled(false);
-                await EnsureTargetingObjectAsync();
-                await ShowInGameHudAsync();
-                await BeginCycleTimerAsync();
-                await StartEnemySpawningAsync();
+                if (uiManager != null)
+                    await uiManager.FadeInAsync(0.3f);
+                return;
             }
+
+            BindCameraFixed();
+            SetPlayerControlEnabled(false);
+            await EnsureTargetingObjectAsync();
+            await ShowInGameHudAsync();
+
+            // 타이머·스폰 전에 일시정지 유지 → 페이드인 → START → 전투
+            PauseForOverlay();
+            if (uiManager != null)
+            {
+                await uiManager.SetFadeAlphaImmediateAsync(1f);
+                await uiManager.FadeInAsync(0.45f);
+            }
+
+            if (_inGameUi != null)
+                await _inGameUi.PlayStartAnnounceAsync();
+
+            ResumeFromOverlay();
+            await BeginCycleTimerAsync();
+            await StartEnemySpawningAsync();
         }
 
         private async Task SpawnSelectedCharacterAsync(SurvivorsRunUnitData data)

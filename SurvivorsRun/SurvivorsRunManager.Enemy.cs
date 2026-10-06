@@ -15,6 +15,10 @@ namespace SHIN
         [Tooltip("우측 스폰 시 카메라/맵 오른쪽에서 얼마나 밖으로 둘지.")]
         private float _rightSpawnPadding = 1.5f;
 
+        [SerializeField]
+        [Tooltip("누수 판정: 카메라 왼쪽 밖으로 이만큼 나가면 Life 감소. 맵 minX보다 화면이 안쪽이면 화면 기준이 우선.")]
+        private float _leakViewportPadding = 0.15f;
+
         private SurvivorsRunEnemySO _enemySo;
         private SurvivorsRunEnemySpawner _enemySpawner;
         private readonly List<SurvivorsRunUnitBase> _activeEnemies = new();
@@ -258,15 +262,36 @@ namespace SHIN
             return _activeMap.transform.TransformPoint(local);
         }
 
-        /// <summary>맵 왼쪽 경계(로컬 min X) 이하면 누수.</summary>
+        /// <summary>
+        /// 누수 판정. 맵 왼쪽(minX)과 카메라 왼쪽 중 <b>더 오른쪽(먼저 닿는)</b> 경계를 쓴다.
+        /// 맵이 화면보다 넓어 화면 밖으로 나간 뒤에도 Life가 안 깎이던 문제를 막는다.
+        /// </summary>
         public bool HasEnemyLeaked(Vector3 worldPosition)
         {
-            if (_activeMap == null)
+            var leakWorldX = float.NegativeInfinity;
+            var hasBoundary = false;
+
+            if (_activeMap != null)
+            {
+                _activeMap.GetClampLocal(out var minLocal, out _);
+                var mapLeft = _activeMap.transform.TransformPoint(new Vector3(minLocal.x, 0f, 0f)).x;
+                leakWorldX = mapLeft;
+                hasBoundary = true;
+            }
+
+            var cam = _runCamera != null ? _runCamera : Camera.main;
+            if (cam != null)
+            {
+                GetCameraHalfExtents(cam, out var halfW, out _);
+                var cameraLeft = cam.transform.position.x - halfW - Mathf.Max(0f, _leakViewportPadding);
+                leakWorldX = hasBoundary ? Mathf.Max(leakWorldX, cameraLeft) : cameraLeft;
+                hasBoundary = true;
+            }
+
+            if (!hasBoundary)
                 return false;
 
-            _activeMap.GetClampLocal(out var minLocal, out _);
-            var local = _activeMap.transform.InverseTransformPoint(worldPosition);
-            return local.x <= minLocal.x;
+            return worldPosition.x <= leakWorldX;
         }
 
         /// <summary>

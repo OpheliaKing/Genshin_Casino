@@ -4,8 +4,8 @@ using UnityEngine;
 namespace SHIN
 {
     /// <summary>
-    /// 플레이어 전투 배율(공속·사거리). 버프 아이템이 여기에 값을 쌓는다.
-    /// 같은 Stat은 중첩하지 않고 Multiplier·Remaining을 갱신(리셋)한다.
+    /// 플레이어 전투 배율(공속·사거리·데미지).
+    /// 기간제 버프 + 영구 패시브(소스 tid별)를 합산한다.
     /// </summary>
     public class SurvivorsRunPlayerCombatMods : MonoBehaviour
     {
@@ -17,10 +17,12 @@ namespace SHIN
         }
 
         private readonly List<TimedBuff> _buffs = new();
+        private readonly Dictionary<string, Dictionary<SURVIVORSRUN_BUFF_STAT, float>> _permanents = new();
         private SurvivorsRunUnitBase _owner;
 
         public float AttackSpeedMult => ResolveMult(SURVIVORSRUN_BUFF_STAT.ATTACK_SPEED);
         public float RangeMult => ResolveMult(SURVIVORSRUN_BUFF_STAT.RANGE);
+        public float DamageMult => ResolveMult(SURVIVORSRUN_BUFF_STAT.DAMAGE);
 
         private void Awake()
         {
@@ -49,7 +51,7 @@ namespace SHIN
         }
 
         /// <summary>
-        /// 버프 적용. 같은 Stat이 이미 있으면 덮어쓰고 지속시간을 다시 채운다.
+        /// 기간제 버프. 같은 Stat이 이미 있으면 덮어쓰고 지속시간을 다시 채운다.
         /// </summary>
         public void ApplyBuff(SURVIVORSRUN_BUFF_STAT stat, float multiplier, float duration)
         {
@@ -78,20 +80,79 @@ namespace SHIN
             });
         }
 
+        /// <summary>
+        /// 영구 패시브 한 소스(보통 아이템 tid)의 배율을 통째로 교체한다.
+        /// 빈 목록이면 해당 소스 제거.
+        /// </summary>
+        public void SetPermanentBuffs(string sourceId, IReadOnlyList<(SURVIVORSRUN_BUFF_STAT stat, float multiplier)> buffs)
+        {
+            if (string.IsNullOrWhiteSpace(sourceId))
+                return;
+
+            if (buffs == null || buffs.Count == 0)
+            {
+                _permanents.Remove(sourceId);
+                return;
+            }
+
+            if (!_permanents.TryGetValue(sourceId, out var map) || map == null)
+            {
+                map = new Dictionary<SURVIVORSRUN_BUFF_STAT, float>();
+                _permanents[sourceId] = map;
+            }
+            else
+            {
+                map.Clear();
+            }
+
+            for (var i = 0; i < buffs.Count; i++)
+            {
+                var (stat, multiplier) = buffs[i];
+                if (stat == SURVIVORSRUN_BUFF_STAT.NONE || multiplier <= 0f)
+                    continue;
+
+                map[stat] = Mathf.Max(0.01f, multiplier);
+            }
+
+            if (map.Count == 0)
+                _permanents.Remove(sourceId);
+        }
+
+        public void ClearPermanentBuffs(string sourceId)
+        {
+            if (string.IsNullOrWhiteSpace(sourceId))
+                return;
+
+            _permanents.Remove(sourceId);
+        }
+
         public void ClearAll()
         {
             _buffs.Clear();
+            _permanents.Clear();
         }
 
         private float ResolveMult(SURVIVORSRUN_BUFF_STAT stat)
         {
-            for (var i = 0; i < _buffs.Count; i++)
+            var mult = 1f;
+
+            foreach (var pair in _permanents)
             {
-                if (_buffs[i].Stat == stat)
-                    return Mathf.Max(0.01f, _buffs[i].Multiplier);
+                var map = pair.Value;
+                if (map != null && map.TryGetValue(stat, out var permanent))
+                    mult *= Mathf.Max(0.01f, permanent);
             }
 
-            return 1f;
+            for (var i = 0; i < _buffs.Count; i++)
+            {
+                if (_buffs[i].Stat != stat)
+                    continue;
+
+                mult *= Mathf.Max(0.01f, _buffs[i].Multiplier);
+                break;
+            }
+
+            return Mathf.Max(0.01f, mult);
         }
     }
 }
