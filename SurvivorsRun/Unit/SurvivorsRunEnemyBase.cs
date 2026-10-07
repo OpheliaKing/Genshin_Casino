@@ -50,6 +50,21 @@ namespace SHIN
             _marchEnabled = enabled;
         }
 
+        /// <summary>
+        /// 현재 행진 속도(월드 단위/초, TimeScale 미포함).
+        /// 투사체 선행 조준용. Move와 동일하게 TimeScale은 양쪽에서 같이 적용된다.
+        /// </summary>
+        public Vector2 GetMarchVelocity()
+        {
+            if (!_marchEnabled || _leaked || IsDead || MoveSpeed <= 0f)
+                return Vector2.zero;
+
+            var dir = _marchDirection.sqrMagnitude > 0.0001f
+                ? _marchDirection.normalized
+                : Vector2.left;
+            return dir * MoveSpeed;
+        }
+
         /// <summary>스폰·재사용 시 누수 플래그를 초기화한다.</summary>
         public void ResetMarchState()
         {
@@ -69,11 +84,20 @@ namespace SHIN
 
         protected override void OnDied(SurvivorsRunUnitBase killer)
         {
-            Manager?.ClearAttackTargetIfMatch(this);
-            Manager?.NotifyEnemyKilled(this);
-            Manager?.NotifyBossDefeated(this);
+            var manager = Manager;
+            var deathPos = transform.position;
+
+            manager?.ClearAttackTargetIfMatch(this);
+            manager?.NotifyEnemyKilled(this);
+            manager?.NotifyBossDefeated(this);
+
+            // 이펙트는 적과 독립 풀. 본체는 즉시 반납해도 연출은 끝까지 재생된다.
+            manager?.PlayHitEffect(
+                PublicVariable.Address.SurvivorsRunEnemyDeathEffect,
+                deathPos);
+
             base.OnDied(killer);
-            Manager?.DespawnEnemy(this);
+            manager?.DespawnEnemy(this);
         }
     }
 }

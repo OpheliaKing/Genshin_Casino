@@ -9,7 +9,11 @@ namespace SHIN
     /// </summary>
     public class SurvivorsRunProjectileItem : SurvivorsRunItemBase
     {
-        private const float MultiShotSpreadDegrees = 12f;
+        /// <summary>
+        /// 멀티샷 탄 사이 월드 간격(조준 방향에 수직).
+        /// 각도 스프레드는 먼 적에서 빗나가므로 평행 발사 + 위치 오프셋만 쓴다.
+        /// </summary>
+        private const float MultiShotLateralSpacing = 0.35f;
 
         private GameObject _projectilePrefab;
         private float _cooldownRemaining;
@@ -110,28 +114,28 @@ namespace SHIN
             if (target == null)
                 return false;
 
-            var delta = (Vector2)(target.transform.position - origin);
-            if (delta.sqrMagnitude <= 0.0001f)
+            var speed = ResolveProjectileSpeed();
+            var aim = ResolveLeadAimDirection(origin, target, speed);
+            if (aim.sqrMagnitude <= 0.0001f)
                 return false;
 
-            var aim = delta.normalized;
             var count = ResolveObjectCount();
             var damage = ResolveDamage();
             var hitCooldown = ResolveHitCooldown();
-            var speed = ResolveProjectileSpeed();
             var lifetime = ResolveProjectileLifetime();
             var parent = ResolveSpawnParent();
             var manager = Owner.Manager;
             var poolKey = ResolvePoolKey();
+            // 조준 방향에 수직 단위벡터 (2D). 멀티샷은 같은 방향으로 평행 비행.
+            var lateral = new Vector2(-aim.y, aim.x);
 
             for (var i = 0; i < count; i++)
             {
-                var direction = aim;
+                var spawnPos = (Vector2)origin;
                 if (count > 1)
                 {
-                    var offset = (i - (count - 1) * 0.5f) * MultiShotSpreadDegrees;
-                    var rotated = Quaternion.Euler(0f, 0f, offset) * new Vector3(aim.x, aim.y, 0f);
-                    direction = new Vector2(rotated.x, rotated.y);
+                    var lane = i - (count - 1) * 0.5f;
+                    spawnPos += lateral * (lane * MultiShotLateralSpacing);
                 }
 
                 GameObject instance;
@@ -145,7 +149,11 @@ namespace SHIN
                 }
                 else
                 {
-                    instance = Object.Instantiate(_projectilePrefab, origin, Quaternion.identity, parent);
+                    instance = Object.Instantiate(
+                        _projectilePrefab,
+                        spawnPos,
+                        Quaternion.identity,
+                        parent);
                 }
 
                 if (instance == null)
@@ -155,7 +163,7 @@ namespace SHIN
                     continue;
                 }
 
-                instance.transform.position = origin;
+                instance.transform.position = spawnPos;
                 instance.transform.rotation = Quaternion.identity;
                 instance.SetActive(true);
 
@@ -175,7 +183,7 @@ namespace SHIN
                     Owner,
                     damage,
                     hitCooldown,
-                    direction,
+                    aim,
                     speed,
                     lifetime,
                     poolKey,
@@ -190,6 +198,89 @@ namespace SHIN
         {
             var path = ItemData != null ? ItemData.DamagePrefabPath : null;
             return string.IsNullOrWhiteSpace(path) ? null : path.Trim();
+        }
+
+        /// <summary>
+        /// 적 행진을 고려한 선행 조준. 탄이 도착할 예상 지점으로 쏜다.
+        /// (위쪽 적처럼 비행 시간이 길수록 현재 좌표만 조준하면 빗나감)
+        /// </summary>
+        private static Vector2 ResolveLeadAimDirection(
+            Vector3 origin,
+            SurvivorsRunUnitBase target,
+            float projectileSpeed)
+        {
+            var origin2 = (Vector2)origin;
+            var targetPos = (Vector2)target.transform.position;
+            var toTarget = targetPos - origin2;
+            if (toTarget.sqrMagnitude <= 0.0001f)
+                return Vector2.right;
+
+            var targetVel = Vector2.zero;
+            if (target is SurvivorsRunEnemyBase enemy)
+                targetVel = enemy.GetMarchVelocity();
+
+            if (projectileSpeed <= 0.01f || targetVel.sqrMagnitude <= 0.0001f)
+                return toTarget.normalized;
+
+            if (!TrySolveInterceptTime(origin2, targetPos, targetVel, projectileSpeed, out var t))
+                return toTarget.normalized;
+
+            var intercept = targetPos + targetVel * t;
+            var aim = intercept - origin2;
+            return aim.sqrMagnitude > 0.0001f ? aim.normalized : toTarget.normalized;
+        }
+
+        /// <summary>
+        /// |targetPos + vel*t - origin| = speed*t 의 최소 양수 t.
+        /// </summary>
+        private static bool TrySolveInterceptTime(
+            Vector2 origin,
+            Vector2 targetPos,
+            Vector2 targetVel,
+            float projectileSpeed,
+            out float time)
+        {
+            time = 0f;
+            var d = targetPos - origin;
+            var speedSq = projectileSpeed * projectileSpeed;
+            var a = Vector2.Dot(targetVel, targetVel) - speedSq;
+            var b = 2f * Vector2.Dot(d, targetVel);
+            var c = Vector2.Dot(d, d);
+
+            const float maxLeadTime = 3f;
+
+            if (Mathf.Abs(a) < 0.0001f)
+            {
+                if (Mathf.Abs(b) < 0.0001f)
+                    return false;
+
+                var linearT = -c / b;
+                if (linearT <= 0f || linearT > maxLeadTime)
+                    return false;
+
+                time = linearT;
+                return true;
+            }
+
+            var disc = b * b - 4f * a * c;
+            if (disc < 0f)
+                return false;
+
+            var sqrt = Mathf.Sqrt(disc);
+            var t1 = (-b - sqrt) / (2f * a);
+            var t2 = (-b + sqrt) / (2f * a);
+
+            var best = float.MaxValue;
+            if (t1 > 0f && t1 <= maxLeadTime)
+                best = t1;
+            if (t2 > 0f && t2 <= maxLeadTime && t2 < best)
+                best = t2;
+
+            if (best >= float.MaxValue)
+                return false;
+
+            time = best;
+            return true;
         }
 
         /// <summary>

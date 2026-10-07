@@ -79,6 +79,8 @@ namespace SHIN
             public const string SurvivorsRunEnemySO = "Assets/Addressables/SO/SurvivorsRunEnemySO.asset";
             public const string SurvivorsRunMapSO = "Assets/Addressables/SO/SurvivorsRunMapSO.asset";
             public const string SurvivorsRunItemDataSO = "Assets/Addressables/SO/SurvivorsRunItemDataSO.asset";
+            public const string SurvivorsRunEnemyDeathEffect =
+                "Assets/Addressables/Prefab/InGame/SurvivorsRun/DamageObject/HitEffect/sr_enemy_death_confetti.prefab";
             public const string SurvivorsRunTargetObject =
                 "Assets/Addressables/Prefab/InGame/SurvivorsRun/TargetObject/TargetObject.prefab";
             public const string SurvivorsRunInGameUI =
