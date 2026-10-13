@@ -44,7 +44,7 @@ namespace SHIN
         private static float GetFieldsHeight(SerializedProperty property)
         {
             var line = EditorGUIUtility.singleLineHeight + VerticalSpacing;
-            var count = 5; // tid, name, description, icon, itemType
+            var count = 6; // tid, name, description, acquirePopupText, icon, itemType
 
             var itemType = (SURVIVORSRUN_ITEM_TYPE)property.FindPropertyRelative("_itemType").intValue;
             if (itemType == SURVIVORSRUN_ITEM_TYPE.PASSIVE)
@@ -78,6 +78,7 @@ namespace SHIN
             DrawProp(ref y, x, width, property, "_tid");
             DrawProp(ref y, x, width, property, "_name");
             DrawProp(ref y, x, width, property, "_description");
+            DrawProp(ref y, x, width, property, "_acquirePopupText");
             DrawProp(ref y, x, width, property, "_icon");
             DrawProp(ref y, x, width, property, "_itemType");
 

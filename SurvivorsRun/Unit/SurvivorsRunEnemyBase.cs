@@ -12,6 +12,7 @@ namespace SHIN
         [SerializeField] private Vector2 _marchDirection = Vector2.left;
 
         private bool _leaked;
+        private float _baseMoveSpeed;
 
         private void Update()
         {
@@ -30,6 +31,8 @@ namespace SHIN
             if (manager == null || manager.TimeScale <= 0f)
                 return;
 
+            ApplyPressureMoveSpeed(manager);
+
             var dir = _marchDirection.sqrMagnitude > 0.0001f
                 ? _marchDirection
                 : Vector2.left;
@@ -45,9 +48,21 @@ namespace SHIN
             }
         }
 
+        private void ApplyPressureMoveSpeed(SurvivorsRunManager manager)
+        {
+            var mult = manager.ResolveEnemyMoveSpeedMult(this);
+            SetMoveSpeed(_baseMoveSpeed * mult);
+        }
+
         public void SetMarchEnabled(bool enabled)
         {
             _marchEnabled = enabled;
+        }
+
+        /// <summary>Setup 직후 호출. 압박 배율의 기준 속도를 고정한다.</summary>
+        public void CaptureBaseMoveSpeed()
+        {
+            _baseMoveSpeed = MoveSpeed;
         }
 
         /// <summary>
@@ -56,13 +71,20 @@ namespace SHIN
         /// </summary>
         public Vector2 GetMarchVelocity()
         {
-            if (!_marchEnabled || _leaked || IsDead || MoveSpeed <= 0f)
+            if (!_marchEnabled || _leaked || IsDead)
+                return Vector2.zero;
+
+            var manager = Manager;
+            var speed = manager != null
+                ? _baseMoveSpeed * manager.ResolveEnemyMoveSpeedMult(this)
+                : MoveSpeed;
+            if (speed <= 0f)
                 return Vector2.zero;
 
             var dir = _marchDirection.sqrMagnitude > 0.0001f
                 ? _marchDirection.normalized
                 : Vector2.left;
-            return dir * MoveSpeed;
+            return dir * speed;
         }
 
         /// <summary>스폰·재사용 시 누수 플래그를 초기화한다.</summary>

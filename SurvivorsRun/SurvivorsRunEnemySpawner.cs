@@ -4,18 +4,22 @@ namespace SHIN
 {
     /// <summary>
     /// 맵/세션에 하나 두는 적 스포너.
-    /// 주기적으로 Manager에 우측 스폰을 요청한다.
+    /// 스폰 텀·이속 압박은 <see cref="SurvivorsRunEnemyPressureSettings"/>로 조절한다.
     /// </summary>
     public class SurvivorsRunEnemySpawner : MonoBehaviour
     {
         [SerializeField] private bool _spawningEnabled;
-        [SerializeField] private float _spawnInterval = 1.25f;
-        [SerializeField] private int _maxAliveEnemies = 40;
+
+        [SerializeField]
+        private SurvivorsRunEnemyPressureSettings _pressureSettings = new();
+
         [SerializeField] private string _defaultEnemyUnitId = "enemy_001";
 
         private SurvivorsRunManager _manager;
         private float _spawnCooldown;
         private bool _spawnInFlight;
+
+        public SurvivorsRunEnemyPressureSettings PressureSettings => _pressureSettings;
 
         public void Bind(SurvivorsRunManager manager)
         {
@@ -25,8 +29,11 @@ namespace SHIN
         public void SetSpawningEnabled(bool enabled)
         {
             _spawningEnabled = enabled;
-            if (enabled)
-                _spawnCooldown = 0f;
+            if (!enabled || _manager == null)
+                return;
+
+            _manager.ResetEnemyPressure(_pressureSettings);
+            _spawnCooldown = 0f;
         }
 
         private void Update()
@@ -43,16 +50,23 @@ namespace SHIN
             if (_manager.PlayerInfo != null && _manager.PlayerInfo.Life <= 0)
                 return;
 
+            var dt = Time.deltaTime * _manager.TimeScale;
+            _manager.TickEnemyPressure(dt);
+
             _manager.PruneInactiveEnemies();
 
-            _spawnCooldown -= Time.deltaTime * _manager.TimeScale;
+            _spawnCooldown -= dt;
             if (_spawnCooldown > 0f || _spawnInFlight)
                 return;
 
-            if (_manager.ActiveEnemyCount >= _maxAliveEnemies)
+            var pressure = _manager.EnemyPressure;
+            if (pressure == null)
                 return;
 
-            _spawnCooldown = Mathf.Max(0.05f, _spawnInterval);
+            if (_manager.ActiveEnemyCount >= pressure.MaxAliveEnemies)
+                return;
+
+            _spawnCooldown = Mathf.Max(0.05f, pressure.SpawnInterval);
             _ = SpawnOneAsync();
         }
 

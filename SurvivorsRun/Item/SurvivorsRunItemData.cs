@@ -15,6 +15,11 @@ namespace SHIN
         [SerializeField] private string _description;
         public string Description => _description;
 
+        [SerializeField]
+        [Tooltip("획득 시 캐릭터 위에 뜨는 짧은 문구. 비우면 Name을 쓴다.")]
+        private string _acquirePopupText;
+        public string AcquirePopupText => _acquirePopupText;
+
         [SerializeField] private Sprite _icon;
         public Sprite Icon => _icon;
 
@@ -137,6 +142,20 @@ namespace SHIN
         }
 
         public bool HasHitEffect => !string.IsNullOrWhiteSpace(_hitEffectPrefabPath);
+
+        /// <summary>획득 팝업에 쓸 문구. 스택 2 이상이면 ×N 표기.</summary>
+        public string ResolveAcquirePopupText(int stackAfter = 1)
+        {
+            var text = !string.IsNullOrWhiteSpace(_acquirePopupText)
+                ? _acquirePopupText.Trim()
+                : (!string.IsNullOrWhiteSpace(_name) ? _name.Trim() : Tid);
+
+            if (string.IsNullOrWhiteSpace(text))
+                text = "아이템 획득";
+
+            stackAfter = Mathf.Max(1, stackAfter);
+            return stackAfter > 1 ? $"{text} ×{stackAfter}" : text;
+        }
 
         public bool IsAtMaxStack(int currentStack) => currentStack >= MaxStack;
 

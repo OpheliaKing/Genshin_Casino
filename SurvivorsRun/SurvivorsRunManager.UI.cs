@@ -113,6 +113,7 @@ namespace SHIN
                 return;
 
             _playerInfo.LevelChanged += OnPlayerLevelChangedForUi;
+            BindItemAcquireEvents();
             _runUiBound = true;
         }
 
@@ -122,6 +123,7 @@ namespace SHIN
                 return;
 
             _playerInfo.LevelChanged -= OnPlayerLevelChangedForUi;
+            UnbindItemAcquireEvents();
             _runUiBound = false;
         }
 
@@ -145,7 +147,7 @@ namespace SHIN
             TryShowNextLevelUp();
         }
 
-        /// <summary>적 처치 시 호출. Kill/Exp 반영.</summary>
+        /// <summary>적 처치 시 호출. Kill/Exp + 유닛별 칩(골드 수급 던전).</summary>
         public void NotifyEnemyKilled(SurvivorsRunUnitBase enemy)
         {
             if (IsRunFinished || enemy == null)
@@ -153,49 +155,59 @@ namespace SHIN
 
             _playerInfo.AddKill(1);
             _playerInfo.AddExp(5);
+            TryGrantKillGold(enemy);
+        }
+
+        /// <summary>잡몹·보스 모두 UnitData.GoldReward. 보스는 SO에 대량으로 둔다.</summary>
+        private void TryGrantKillGold(SurvivorsRunUnitBase enemy)
+        {
+            var data = GetEnemyData(enemy.Tid);
+            var reward = data != null ? data.GoldReward : 0;
+            if (reward <= 0)
+                return;
+
+            var gm = GameManager.Instance;
+            if (gm == null)
+                return;
+
+            gm.AddGold(reward);
+            ShowGoldPopup(enemy.transform.position, reward);
         }
 
         private void TryShowNextLevelUp()
         {
-            if (IsRunFinished || _levelUpShowing || _pendingLevelUps <= 0)
+            if (IsRunFinished || _pendingLevelUps <= 0)
                 return;
 
-            _ = ShowLevelUpUiAsync();
+            // 임시 관전 파밍: 선택 UI 없이 자동 획득.
+            // (입력형 ACTIVE/UNIQUE 제외 — 자동 무기·버프 패시브는 포함)
+            _ = AutoGrantLevelUpItemsAsync();
+        }
+
+        /// <summary>레벨업 선택창 없이 후보 1장을 즉시 지급한다.</summary>
+        private async Task AutoGrantLevelUpItemsAsync()
+        {
+            if (IsRunFinished || _pendingLevelUps <= 0 || _levelUpShowing)
+                return;
+
+            _levelUpShowing = true;
+            await EnsureItemDataSoAsync();
+
+            while (!IsRunFinished && _pendingLevelUps > 0)
+            {
+                _pendingLevelUps--;
+                var picks = BuildLevelUpChoices(1);
+                if (picks.Count > 0)
+                    _playerInfo.AddItem(picks[0]);
+            }
+
+            _levelUpShowing = false;
         }
 
         private async Task ShowLevelUpUiAsync()
         {
-            if (_levelUpShowing || _pendingLevelUps <= 0)
-                return;
-
-            _levelUpShowing = true;
-            PauseForOverlay();
-
-            var uiManager = GameManager.Instance?.UIManager;
-            if (uiManager == null)
-            {
-                _levelUpShowing = false;
-                ResumeFromOverlay();
-                return;
-            }
-
-            var shown = new TaskCompletionSource<SurvivorsRunLevelUpUI>();
-            uiManager.Show(PublicVariable.Address.SurvivorsRunLevelUpUI, ui =>
-            {
-                shown.TrySetResult(ui as SurvivorsRunLevelUpUI);
-            });
-            _levelUpUi = await shown.Task;
-            if (_levelUpUi == null)
-            {
-                _levelUpShowing = false;
-                _pendingLevelUps = Mathf.Max(0, _pendingLevelUps - 1);
-                ResumeFromOverlay();
-                return;
-            }
-
-            await EnsureItemDataSoAsync();
-            var choices = BuildLevelUpChoices(3);
-            _levelUpUi.Setup(this, choices);
+            // 임시 비활성. 복구 시 AutoGrant 대신 이 경로를 다시 쓰면 된다.
+            await AutoGrantLevelUpItemsAsync();
         }
 
         private List<SurvivorsRunItemData> BuildLevelUpChoices(int count)
@@ -212,30 +224,17 @@ namespace SHIN
                 if (item == null)
                     continue;
 
-                // 레벨업: 자동 무기 + 액티브 + 영구 패시브. UNIQUE는 캐릭터 고정이라 제외.
-                var isLevelUpCandidate =
-                    item.IsPassive ||
-                    item.HasAttackPattern ||
-                    (item.ItemType == SURVIVORSRUN_ITEM_TYPE.ACTIVE && item.UsesAttackPattern);
-
-                if (!isLevelUpCandidate)
+                // 관전용: 입력 발동(ACTIVE/UNIQUE)만 제외.
+                // 자동 무기(WEAPON) 스택·영구 패시브는 포함 → 매직 볼트 멀티샷 가능.
+                var isAutoWeapon = item.HasAttackPattern;
+                var isBuffPassive = item.IsPassive && item.HasPassiveBuffEffects;
+                if (!isAutoWeapon && !isBuffPassive)
                     continue;
 
                 if (IsOwnedAtMaxStack(item))
                     continue;
 
                 pool.Add(item);
-            }
-
-            if (pool.Count == 0)
-            {
-                for (var i = 0; i < source.Count; i++)
-                {
-                    var fallback = source[i];
-                    if (fallback == null || IsOwnedAtMaxStack(fallback))
-                        continue;
-                    pool.Add(fallback);
-                }
             }
 
             while (result.Count < count && pool.Count > 0)
@@ -531,8 +530,9 @@ namespace SHIN
                 if (_selectedCharacter != null)
                 {
                     await ApplyStartWeaponAsync(_selectedCharacter);
-                    await ApplyUniqueSkillAsync(_selectedCharacter);
-                    await ApplyStartActiveAsync(_selectedCharacter);
+                    // 임시 관전 파밍: 액티브·고유 비활성
+                    // await ApplyUniqueSkillAsync(_selectedCharacter);
+                    // await ApplyStartActiveAsync(_selectedCharacter);
                 }
             }
 

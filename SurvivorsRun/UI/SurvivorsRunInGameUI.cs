@@ -26,6 +26,7 @@ namespace SHIN
 
         [SerializeField] private TextMeshProUGUI _lifeText;
         [SerializeField] private TextMeshProUGUI _levelText;
+        [SerializeField] private TextMeshProUGUI _goldText;
         [SerializeField] private TextMeshProUGUI _killText;
         [SerializeField] private TextMeshProUGUI _timerText;
         [SerializeField] private TextMeshProUGUI _hpText;
@@ -98,6 +99,7 @@ namespace SHIN
             }
 
             BindPlayerUnit(_manager.PlayerUnit);
+            BindGold();
             RefreshSkillVisuals();
         }
 
@@ -334,8 +336,52 @@ namespace SHIN
                 _boundPlayer = null;
             }
 
+            UnbindGold();
             _manager = null;
             HideBossWarning();
+        }
+
+        private void BindGold()
+        {
+            var gm = GameManager.Instance;
+            if (gm == null)
+            {
+                RefreshGold(0);
+                return;
+            }
+
+            gm.GoldChanged -= OnGoldChanged;
+            gm.GoldChanged += OnGoldChanged;
+            RefreshGold(gm.PlayerData != null ? gm.PlayerData.haveGold : 0);
+            _ = EnsureGoldAsync();
+        }
+
+        private void UnbindGold()
+        {
+            var gm = GameManager.Instance;
+            if (gm != null)
+                gm.GoldChanged -= OnGoldChanged;
+        }
+
+        private async Task EnsureGoldAsync()
+        {
+            var gm = GameManager.Instance;
+            if (gm == null)
+                return;
+
+            var data = await gm.EnsurePlayerDataAsync();
+            if (this == null || !isActiveAndEnabled)
+                return;
+
+            RefreshGold(data != null ? data.haveGold : 0);
+        }
+
+        private void OnGoldChanged(int gold) => RefreshGold(gold);
+
+        private void RefreshGold(int gold)
+        {
+            if (_goldText != null)
+                _goldText.text = $"칩 {Mathf.Max(0, gold)}";
         }
 
         private void OnLifeChanged(int life)
@@ -452,6 +498,7 @@ namespace SHIN
             if (_lifeText != null && _pauseButton != null)
             {
                 EnsureTimerLabel();
+                EnsureGoldLabel();
                 EnsureBossWarning();
                 EnsureActiveSlotsExist();
                 WireButtons();
@@ -523,6 +570,27 @@ namespace SHIN
                 new Vector2(0.5f, 0.5f), new Vector2(0f, 0f), new Vector2(120f, 48f));
         }
 
+        private void EnsureGoldLabel()
+        {
+            if (_goldText != null)
+                return;
+
+            var top = transform.Find("TopBar");
+            if (top == null)
+                return;
+
+            var existing = top.Find("Gold");
+            if (existing != null)
+            {
+                _goldText = existing.GetComponent<TextMeshProUGUI>();
+                if (_goldText != null)
+                    return;
+            }
+
+            _goldText = CreateLabel(top, "Gold", "칩 0", TextAlignmentOptions.Right, new Vector2(1f, 0.5f),
+                new Vector2(1f, 0.5f), new Vector2(-340f, 0f), new Vector2(160f, 48f));
+        }
+
         private void WireButtons()
         {
             if (_pauseButton != null)
@@ -586,6 +654,9 @@ namespace SHIN
 
             _timerText = CreateLabel(top.transform, "Timer", "2:00", TextAlignmentOptions.Center, new Vector2(0.5f, 0.5f),
                 new Vector2(0.5f, 0.5f), new Vector2(0f, 0f), new Vector2(120f, 48f));
+
+            _goldText = CreateLabel(top.transform, "Gold", "칩 0", TextAlignmentOptions.Right, new Vector2(1f, 0.5f),
+                new Vector2(1f, 0.5f), new Vector2(-340f, 0f), new Vector2(160f, 48f));
 
             _killText = CreateLabel(top.transform, "Kills", "Kills 0", TextAlignmentOptions.Right, new Vector2(1f, 0.5f),
                 new Vector2(1f, 0.5f), new Vector2(-120f, 0f), new Vector2(200f, 48f));

@@ -36,6 +36,8 @@ namespace SHIN
         public event Action<int> KillCountChanged;
         public event Action<int> LifeChanged;
         public event Action OwnedItemsChanged;
+        /// <summary>아이템 획득/중첩 성공 시 (데이터, 획득 후 스택). 최대 스택이라 막히면 호출되지 않음.</summary>
+        public event Action<SurvivorsRunItemData, int> ItemAcquired;
 
         public void BindItemController(SurvivorsRunPlayerItemController itemController)
         {
@@ -102,7 +104,11 @@ namespace SHIN
         /// <summary>
         /// 보유 목록을 갱신한 뒤 ItemController에 런타임을 반영한다.
         /// </summary>
-        public SurvivorsRunPlayerOwnedItem AddItem(SurvivorsRunItemData itemData, int stack = 1)
+        /// <param name="announce">true면 ItemAcquired 이벤트(획득 팝업) 발생.</param>
+        public SurvivorsRunPlayerOwnedItem AddItem(
+            SurvivorsRunItemData itemData,
+            int stack = 1,
+            bool announce = true)
         {
             if (itemData == null || string.IsNullOrWhiteSpace(itemData.Tid))
                 return null;
@@ -110,6 +116,7 @@ namespace SHIN
             stack = Mathf.Max(1, stack);
             var tid = itemData.Tid.Trim();
             var owned = FindOwned(tid);
+            var granted = false;
             if (owned != null)
             {
                 var room = itemData.GetRemainingStackRoom(owned.Stack);
@@ -122,6 +129,7 @@ namespace SHIN
                 stack = Mathf.Min(stack, room);
                 owned.Stack += stack;
                 owned.ItemData = itemData;
+                granted = true;
             }
             else
             {
@@ -133,6 +141,7 @@ namespace SHIN
                     ItemData = itemData,
                 };
                 _ownedItems.Add(owned);
+                granted = true;
             }
 
             if (_itemController != null)
@@ -141,6 +150,8 @@ namespace SHIN
                 Debug.LogWarning("[PlayerInfo] ItemController가 없어 런타임 아이템을 반영하지 못했습니다.");
 
             OwnedItemsChanged?.Invoke();
+            if (announce && granted)
+                ItemAcquired?.Invoke(itemData, owned.Stack);
             return owned;
         }
 

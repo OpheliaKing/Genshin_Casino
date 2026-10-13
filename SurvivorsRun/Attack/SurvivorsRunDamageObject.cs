@@ -35,8 +35,8 @@ namespace SHIN
         public float HitCooldown => _hitCooldown;
         public bool IsDamageEnabled => _damageEnabled;
 
-        /// <summary>피해 적용에 성공했을 때 (Projectile 관통/소멸 판정 등).</summary>
-        public event Action<SurvivorsRunUnitBase> DamageApplied;
+        /// <summary>피해 적용에 성공했을 때 (대상, 히트 월드 좌표). Projectile 연쇄 등.</summary>
+        public event Action<SurvivorsRunUnitBase, Vector3> DamageApplied;
 
         private void Reset()
         {
@@ -113,6 +113,15 @@ namespace SHIN
         public void SetHitCooldown(float hitCooldown)
         {
             _hitCooldown = Mathf.Max(0f, hitCooldown);
+        }
+
+        /// <summary>연쇄 튕김 등: 특정 유닛을 한동안 재타격하지 않는다.</summary>
+        public void MarkRecentlyHit(SurvivorsRunUnitBase unit, float duration)
+        {
+            if (unit == null || duration <= 0f)
+                return;
+
+            _hitCooldowns[unit] = duration;
         }
 
         /// <summary>기본 피해 × 소유자 DamageMult(영구 패시브·기간제 버프).</summary>
@@ -198,25 +207,26 @@ namespace SHIN
             if (_hitCooldown > 0f)
                 _hitCooldowns[target] = _hitCooldown;
 
-            TryPlayHitEffect(other);
-            DamageApplied?.Invoke(target);
+            var hitPos = ResolveHitWorldPosition(other);
+            TryPlayHitEffect(hitPos);
+            DamageApplied?.Invoke(target, hitPos);
         }
 
-        /// <summary>
-        /// 피격 콜라이더 표면에서 이 DamageObject에 가장 가까운 점 = 접촉 근사.
-        /// (적 transform 중심이 아님)
-        /// </summary>
-        private void TryPlayHitEffect(Collider2D other)
+        /// <summary>피격 콜라이더 표면에서 DamageObject에 가장 가까운 점(접촉 근사).</summary>
+        private Vector3 ResolveHitWorldPosition(Collider2D other)
+        {
+            if (other == null)
+                return transform.position;
+
+            return other.ClosestPoint(transform.position);
+        }
+
+        private void TryPlayHitEffect(Vector3 hitPos)
         {
             if (string.IsNullOrEmpty(_hitEffectPrefabPath) || _owner?.Manager == null)
                 return;
 
-            var origin = (Vector2)transform.position;
-            var pos = other != null
-                ? (Vector3)other.ClosestPoint(origin)
-                : transform.position;
-
-            _owner.Manager.PlayHitEffect(_hitEffectPrefabPath, pos, _hitEffectLifetime);
+            _owner.Manager.PlayHitEffect(_hitEffectPrefabPath, hitPos, _hitEffectLifetime);
         }
 
         private float GetDeltaTime()

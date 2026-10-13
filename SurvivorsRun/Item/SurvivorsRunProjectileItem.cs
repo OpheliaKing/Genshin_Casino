@@ -188,7 +188,8 @@ namespace SHIN
                     lifetime,
                     poolKey,
                     ItemData != null ? ItemData.HitEffectPrefabPath : null,
-                    ItemData != null ? ItemData.HitEffectLifetime : -1f);
+                    ItemData != null ? ItemData.HitEffectLifetime : -1f,
+                    _projectilePrefab);
             }
 
             return true;

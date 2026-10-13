@@ -40,6 +40,11 @@ namespace SHIN
         public float UnitSpeed => _unitSpeed;
 
         [SerializeField]
+        [Tooltip("처치 시 지급 칩(골드 수급 던전). 잡몹은 소량, 보스는 대량.")]
+        private int _goldReward;
+        public int GoldReward => Mathf.Max(0, _goldReward);
+
+        [SerializeField]
         [Tooltip("플레이어 전용. 시작 시 장착할 무기 ItemData tid (예: item_projectile_001). 몬스터는 비운다.")]
         private string _startWeaponTid;
         public string StartWeaponTid => _startWeaponTid;

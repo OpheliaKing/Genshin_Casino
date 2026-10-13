@@ -24,6 +24,10 @@ namespace SHIN
         public float RangeMult => ResolveMult(SURVIVORSRUN_BUFF_STAT.RANGE);
         public float DamageMult => ResolveMult(SURVIVORSRUN_BUFF_STAT.DAMAGE);
 
+        /// <summary>투사체 명중 후 추가 튕김 횟수. PROJECTILE_CHAIN 영구/기간 합산.</summary>
+        public int ProjectileChainBounces =>
+            Mathf.Max(0, Mathf.RoundToInt(ResolveAdditive(SURVIVORSRUN_BUFF_STAT.PROJECTILE_CHAIN)));
+
         private void Awake()
         {
             _owner = GetComponent<SurvivorsRunUnitBase>();
@@ -153,6 +157,30 @@ namespace SHIN
             }
 
             return Mathf.Max(0.01f, mult);
+        }
+
+        /// <summary>가산형 스탯(연쇄 튕김 등). 소스별 값을 더한다.</summary>
+        private float ResolveAdditive(SURVIVORSRUN_BUFF_STAT stat)
+        {
+            var sum = 0f;
+
+            foreach (var pair in _permanents)
+            {
+                var map = pair.Value;
+                if (map != null && map.TryGetValue(stat, out var permanent))
+                    sum += Mathf.Max(0f, permanent);
+            }
+
+            for (var i = 0; i < _buffs.Count; i++)
+            {
+                if (_buffs[i].Stat != stat)
+                    continue;
+
+                sum += Mathf.Max(0f, _buffs[i].Multiplier);
+                break;
+            }
+
+            return sum;
         }
     }
 }

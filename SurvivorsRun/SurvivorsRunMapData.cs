@@ -42,8 +42,8 @@ namespace SHIN
         public IReadOnlyList<string> BossUnitIds => _bossUnitIds;
 
         [SerializeField]
-        [Tooltip("클리어 시 PlayerData.haveGold에 더할 칩.")]
-        private int _clearGoldReward = 50;
+        [Tooltip("클리어 보너스 칩. 주 수급은 적 UnitData.GoldReward(잡몹·보스 처치). 0이면 보너스 없음.")]
+        private int _clearGoldReward;
         public int ClearGoldReward => Mathf.Max(0, _clearGoldReward);
 
         /// <summary>후보 중 유효한 unitId 하나. 없으면 null.</summary>

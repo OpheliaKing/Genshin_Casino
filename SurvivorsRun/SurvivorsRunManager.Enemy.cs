@@ -22,10 +22,42 @@ namespace SHIN
         private SurvivorsRunEnemySO _enemySo;
         private SurvivorsRunEnemySpawner _enemySpawner;
         private readonly List<SurvivorsRunUnitBase> _activeEnemies = new();
+        private readonly SurvivorsRunEnemyPressure _enemyPressure = new();
 
         public SurvivorsRunEnemySO EnemySo => _enemySo;
         public IReadOnlyList<SurvivorsRunUnitBase> ActiveEnemies => _activeEnemies;
         public int ActiveEnemyCount => CountAliveEnemies();
+        public SurvivorsRunEnemyPressure EnemyPressure => _enemyPressure;
+
+        /// <summary>
+        /// 스폰 시작 시 압박 초기화.
+        /// 곡선 길이는 선택 맵의 사이클 시간(보스전까지)을 쓴다.
+        /// </summary>
+        public void ResetEnemyPressure(SurvivorsRunEnemyPressureSettings settings)
+        {
+            _enemyPressure.Reset(settings, CycleDurationSeconds);
+        }
+
+        public void TickEnemyPressure(float dt)
+        {
+            _enemyPressure.Tick(dt);
+        }
+
+        /// <summary>잡몹만 압박 이속 배율. 사이클 보스는 항상 1.</summary>
+        public float ResolveEnemyMoveSpeedMult(SurvivorsRunUnitBase enemy)
+        {
+            if (enemy != null && _activeBoss != null && ReferenceEquals(enemy, _activeBoss))
+                return 1f;
+
+            return _enemyPressure != null ? Mathf.Max(0.01f, _enemyPressure.MoveSpeedMult) : 1f;
+        }
+
+        /// <summary>스폰 시점 체력. 이미 나온 적은 그대로, 이후 스폰분부터 배율 적용.</summary>
+        public int ResolveSpawnHp(int baseHp)
+        {
+            var mult = _enemyPressure != null ? _enemyPressure.HpMult : 1f;
+            return Mathf.Max(1, Mathf.RoundToInt(Mathf.Max(1, baseHp) * Mathf.Max(0.01f, mult)));
+        }
 
         private void EnsureEnemyRuntimeRefs()
         {
@@ -161,14 +193,16 @@ namespace SHIN
                 return null;
             }
 
+            var hp = ResolveSpawnHp(data.UnitHP);
             enemy.BindManager(this);
             enemy.Setup(
                 data.UnitId,
                 SURVIVORSRUN_UNIT_TYPE.ENEMY,
-                data.UnitHP,
+                hp,
                 Mathf.RoundToInt(data.UnitAttack),
                 data.UnitSpeed,
                 attackSpeed: 1f);
+            enemy.CaptureBaseMoveSpeed();
             enemy.ResetMarchState();
 
             var loadout = instance.GetComponent<SurvivorsRunEnemyLoadoutController>();

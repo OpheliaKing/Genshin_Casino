@@ -46,8 +46,10 @@ namespace SHIN
             if (_detailText != null && manager?.PlayerInfo != null)
             {
                 var info = manager.PlayerInfo;
-                var gold = manager.ClearGoldReward;
-                _detailText.text = $"Lv.{info.Level}  ·  Kills {info.KillCount}\n+{gold} 칩";
+                var clearBonus = manager.ClearGoldReward;
+                _detailText.text = clearBonus > 0
+                    ? $"Lv.{info.Level}  ·  Kills {info.KillCount}\n클리어 보너스 +{clearBonus} 칩"
+                    : $"Lv.{info.Level}  ·  Kills {info.KillCount}";
             }
 
             if (_retryButton != null)

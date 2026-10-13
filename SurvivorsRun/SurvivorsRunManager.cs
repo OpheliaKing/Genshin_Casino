@@ -201,8 +201,9 @@ namespace SHIN
                 _playerInfo.Reset();
                 _playerInfo.BindItemController(itemController);
                 await ApplyStartWeaponAsync(data);
-                await ApplyUniqueSkillAsync(data);
-                await ApplyStartActiveAsync(data);
+                // 임시 관전 파밍: 액티브·고유 스킬 비활성 (시작 무기만).
+                // await ApplyUniqueSkillAsync(data);
+                // await ApplyStartActiveAsync(data);
             }
             else
             {
@@ -251,7 +252,8 @@ namespace SHIN
                 return;
             }
 
-            _playerInfo.AddItem(itemData);
+            // 시작 무기는 획득 팝업 생략 (런 시작 연출과 겹침 방지)
+            _playerInfo.AddItem(itemData, stack: 1, announce: false);
         }
 
         private async Task ApplyUniqueSkillAsync(SurvivorsRunUnitData data)

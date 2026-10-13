@@ -60,14 +60,33 @@ namespace SHIN
         }
 
         /// <summary>
-        /// TMP 기본 폰트(Pretendard-SemiBold)를 강제 적용. LiberationSans면 한글이 깨진다.
+        /// TMP 기본 폰트(Pretendard)를 강제 적용. LiberationSans면 한글이 깨진다.
         /// </summary>
+        public static TMP_FontAsset ResolveKoreanFont()
+        {
+            return TMP_Settings.defaultFontAsset;
+        }
+
         public static void ApplyKoreanFont(TextMeshProUGUI tmp)
         {
             if (tmp == null)
                 return;
 
-            var font = TMP_Settings.defaultFontAsset;
+            var font = ResolveKoreanFont();
+            if (font == null)
+                return;
+
+            tmp.font = font;
+            if (font.material != null)
+                tmp.fontSharedMaterial = font.material;
+        }
+
+        public static void ApplyKoreanFont(TextMeshPro tmp)
+        {
+            if (tmp == null)
+                return;
+
+            var font = ResolveKoreanFont();
             if (font == null)
                 return;
 

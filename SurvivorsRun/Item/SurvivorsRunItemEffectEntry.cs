@@ -13,6 +13,11 @@ namespace SHIN
         RANGE,
         /// <summary>피해 배율. 1.3 = 30% 증가.</summary>
         DAMAGE,
+        /// <summary>
+        /// 투사체 연쇄 튕김 횟수(가산). 배율이 아니라 합산 값.
+        /// 예: multiplier 1 + stackBonus 1 → 스택만큼 튕김.
+        /// </summary>
+        PROJECTILE_CHAIN,
     }
 
     /// <summary>
