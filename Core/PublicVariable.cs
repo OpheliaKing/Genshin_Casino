@@ -68,6 +68,7 @@ namespace SHIN
             public const string FadeUI = "Assets/Addressables/Prefab/UI/FadeUI.prefab";
             public const string StartUI = "Assets/Addressables/Prefab/UI/StartUI.prefab";
             public const string MainUI = "Assets/Addressables/Prefab/UI/MainUI.prefab";
+            public const string ShopUI = "Assets/Addressables/Prefab/UI/Shop/ShopUI.prefab";
             public const string SurvivorsRunSession = "Assets/Addressables/Prefab/InGame/SurvivorsRun/SurvivorsRunSession.prefab";
             public const string SurvivorsRunMap = "Assets/Addressables/Prefab/InGame/SurvivorsRun/SurvivorsRunMap.prefab";
             // 프리팹 파일명 오타(Chracter)는 에셋 경로와 동일하게 유지

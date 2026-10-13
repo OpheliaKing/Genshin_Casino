@@ -27,6 +27,11 @@ namespace SHIN
             _ = TransitionFromMainAsync(EnterSurvivorsRunAsync);
         }
 
+        public void OnClickShopButton()
+        {
+            _ = TransitionFromMainAsync(EnterShopAsync);
+        }
+
         /// <summary>
         /// 미니게임 공통: 페이드 아웃 → midAction → 페이드 인.
         /// </summary>
@@ -77,6 +82,24 @@ namespace SHIN
             var selectUI = await shown.Task;
             if (selectUI != null)
                 await selectUI.WaitUntilReadyAsync();
+        }
+
+        private async Task EnterShopAsync(GameManager gameManager, UIManager uiManager)
+        {
+            if (gameManager != null)
+                await gameManager.EnsurePlayerDataAsync();
+
+            uiManager.Close(this, restoreVisibleStack: false);
+
+            var shown = new TaskCompletionSource<ShopUI>();
+            uiManager.Show(PublicVariable.Address.ShopUI, ui =>
+            {
+                shown.TrySetResult(ui as ShopUI);
+            });
+
+            var shop = await shown.Task;
+            if (shop == null)
+                Debug.LogError("[MainUI] ShopUI Show 실패. Addressables에 ShopUI 프리팹을 등록했는지 확인하세요.");
         }
 
         private async Task EnterSurvivorsRunAsync(GameManager gameManager, UIManager uiManager)
