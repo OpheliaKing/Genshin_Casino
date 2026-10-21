@@ -6,9 +6,9 @@ Unity 6로 만드는 캐주얼 클라이언트입니다. 로비에서 **포커**
 
 ## 플레이 영상
 
-포커 베타 영상입니다.
+포커 베타 영상입니다. 이미지를 누르면 재생됩니다.
 
-[포커 베타 플레이 영상](https://www.youtube.com/watch?v=6RIP7LmVRBk)
+[![포커 베타 플레이 영상](https://img.youtube.com/vi/6RIP7LmVRBk/hqdefault.jpg)](https://www.youtube.com/watch?v=6RIP7LmVRBk)
 
 ## 포커
 
