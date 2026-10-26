@@ -43,6 +43,17 @@ namespace SHIN
             return FadeToAsync(0f, duration);
         }
 
+        /// <summary>트윈 없이 페이드 알파를 즉시 설정. 로딩 중 검정 유지용.</summary>
+        public async Task SetFadeAlphaImmediateAsync(float alpha)
+        {
+            var fade = await EnsureFadeUIAsync();
+            if (fade == null)
+                return;
+
+            fade.BringToFront();
+            fade.SetAlphaImmediate(alpha);
+        }
+
         public async Task FadeToAsync(float targetAlpha, float duration = -1f)
         {
             var fade = await EnsureFadeUIAsync();

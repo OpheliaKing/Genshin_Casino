@@ -10,7 +10,7 @@ namespace SHIN
     /// <summary>
     /// Addressables Load / Instantiate / Release 진입점.
     /// </summary>
-    public class ResourceManager : ManagerBase
+    public partial class ResourceManager : ManagerBase
     {
         private readonly Dictionary<string, AsyncOperationHandle> _assetHandles = new();
         private readonly Dictionary<string, AsyncOperationHandle> _labelHandles = new();
@@ -31,6 +31,7 @@ namespace SHIN
                 return cached.Status == AsyncOperationStatus.Succeeded ? cached.Result as T : null;
             }
 
+            TraceLoadStarted(address, ResourceTraceKind.Asset);
             var handle = Addressables.LoadAssetAsync<T>(address);
             _assetHandles[address] = handle;
             await handle.Task;
@@ -39,9 +40,11 @@ namespace SHIN
             {
                 Debug.LogError($"[ResourceManager] 로드 실패: {address}");
                 _assetHandles.Remove(address);
+                TraceLoadFinished(address, ResourceTraceKind.Asset, false);
                 return null;
             }
 
+            TraceLoadFinished(address, ResourceTraceKind.Asset, true);
             return handle.Result;
         }
 
@@ -56,10 +59,16 @@ namespace SHIN
             onComplete?.Invoke(result);
         }
 
+        /// <summary>
+        /// Addressables 프리팹을 생성한다.
+        /// startInactive면 Load 후 동기 Instantiate → 즉시 비활성화해서
+        /// InstantiateAsync 완료~비활성 사이 한 프레임 노출을 막는다.
+        /// </summary>
         public async Task<GameObject> InstantiateAsync(
             string address,
             Transform parent = null,
-            bool startInactive = true)
+            bool startInactive = true,
+            Vector3? worldPosition = null)
         {
             if (string.IsNullOrEmpty(address))
             {
@@ -67,18 +76,28 @@ namespace SHIN
                 return null;
             }
 
-            var handle = Addressables.InstantiateAsync(address, parent);
-            var instance = await handle.Task;
-
-            if (handle.Status != AsyncOperationStatus.Succeeded || instance == null)
+            // InstantiateAsync는 완료 시점에 이미 active라 Completed/await 사이에 한 프레임 보일 수 있다.
+            // 스폰 플래시 방지: 에셋 로드 후 동기 Instantiate → 즉시 SetActive(false).
+            var prefab = await LoadAsync<GameObject>(address);
+            if (prefab == null)
             {
-                Debug.LogError($"[ResourceManager] 생성 실패: {address}");
+                Debug.LogError($"[ResourceManager] 생성 실패(프리팹 로드): {address}");
                 return null;
             }
 
+            var instance = UnityEngine.Object.Instantiate(prefab);
             if (startInactive)
                 instance.SetActive(false);
 
+            if (parent != null)
+                instance.transform.SetParent(parent, false);
+
+            if (worldPosition.HasValue)
+                instance.transform.position = worldPosition.Value;
+            else
+                instance.transform.localPosition = Vector3.zero;
+
+            instance.transform.localRotation = Quaternion.identity;
             return instance;
         }
 
@@ -116,6 +135,7 @@ namespace SHIN
                 return;
             }
 
+            TraceLoadStarted(label, ResourceTraceKind.Label);
             var handle = Addressables.LoadAssetsAsync<UnityEngine.Object>(label, null);
             _labelHandles[label] = handle;
             await handle.Task;
@@ -124,7 +144,11 @@ namespace SHIN
             {
                 Debug.LogError($"[ResourceManager] 라벨 프리로드 실패: {label}");
                 _labelHandles.Remove(label);
+                TraceLoadFinished(label, ResourceTraceKind.Label, false);
+                return;
             }
+
+            TraceLoadFinished(label, ResourceTraceKind.Label, true);
         }
 
         public void Release(string address)
@@ -136,6 +160,7 @@ namespace SHIN
                 Addressables.Release(handle);
 
             _assetHandles.Remove(address);
+            TraceReleased(address, ResourceTraceKind.Asset);
         }
 
         public void ReleaseInstance(GameObject instance)
@@ -143,7 +168,12 @@ namespace SHIN
             if (instance == null)
                 return;
 
-            Addressables.ReleaseInstance(instance);
+            // Addressables.InstantiateAsync로 만든 인스턴스만 true.
+            // Load+Instantiate 경로면 Destroy로 정리한다.
+            if (!Addressables.ReleaseInstance(instance))
+                UnityEngine.Object.Destroy(instance);
+
+            TraceReleased(instance.name, ResourceTraceKind.Instance);
         }
 
         public void ReleaseLabel(string label)
@@ -155,14 +185,16 @@ namespace SHIN
                 Addressables.Release(handle);
 
             _labelHandles.Remove(label);
+            TraceReleased(label, ResourceTraceKind.Label);
         }
 
         public void ReleaseAllAssets()
         {
-            foreach (var handle in _assetHandles.Values)
+            foreach (var pair in _assetHandles)
             {
-                if (handle.IsValid())
-                    Addressables.Release(handle);
+                if (pair.Value.IsValid())
+                    Addressables.Release(pair.Value);
+                TraceReleased(pair.Key, ResourceTraceKind.Asset);
             }
 
             _assetHandles.Clear();
@@ -170,10 +202,11 @@ namespace SHIN
 
         public void ReleaseAllLabels()
         {
-            foreach (var handle in _labelHandles.Values)
+            foreach (var pair in _labelHandles)
             {
-                if (handle.IsValid())
-                    Addressables.Release(handle);
+                if (pair.Value.IsValid())
+                    Addressables.Release(pair.Value);
+                TraceReleased(pair.Key, ResourceTraceKind.Label);
             }
 
             _labelHandles.Clear();

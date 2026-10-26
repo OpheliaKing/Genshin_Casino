@@ -65,6 +65,8 @@ namespace SHIN
 
         public PlayerData PlayerData => _playerData;
 
+        public event System.Action<int> GoldChanged;
+
         public Task<PlayerData> EnsurePlayerDataAsync()
         {
             if (_playerData != null)
@@ -75,6 +77,85 @@ namespace SHIN
 
             _playerDataLoadTask = LoadPlayerDataAsync();
             return _playerDataLoadTask;
+        }
+
+        /// <summary>공용 칩(haveGold) 변경 후 디스크 세이브.</summary>
+        public int AddGold(int delta)
+        {
+            if (_playerData == null || delta == 0)
+                return _playerData != null ? _playerData.haveGold : 0;
+
+            _playerData.haveGold = Mathf.Max(0, _playerData.haveGold + delta);
+            GoldChanged?.Invoke(_playerData.haveGold);
+            SavePlayerProgress();
+            return _playerData.haveGold;
+        }
+
+        public int SetGold(int value)
+        {
+            if (_playerData == null)
+                return 0;
+
+            _playerData.haveGold = Mathf.Max(0, value);
+            GoldChanged?.Invoke(_playerData.haveGold);
+            SavePlayerProgress();
+            return _playerData.haveGold;
+        }
+
+        private void SavePlayerProgress()
+        {
+            if (_playerData == null)
+                return;
+
+            try
+            {
+                var path = GetPlayerSavePath();
+                var save = new PlayerProgressSave
+                {
+                    haveGold = _playerData.haveGold
+                };
+                var json = JsonUtility.ToJson(save, prettyPrint: true);
+                System.IO.File.WriteAllText(path, json);
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogWarning($"[GameManager] 세이브 실패: {e.Message}");
+            }
+        }
+
+        private void ApplyPlayerProgressSave()
+        {
+            if (_playerData == null)
+                return;
+
+            try
+            {
+                var path = GetPlayerSavePath();
+                if (!System.IO.File.Exists(path))
+                    return;
+
+                var json = System.IO.File.ReadAllText(path);
+                var save = JsonUtility.FromJson<PlayerProgressSave>(json);
+                if (save == null)
+                    return;
+
+                _playerData.haveGold = Mathf.Max(0, save.haveGold);
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogWarning($"[GameManager] 세이브 로드 실패: {e.Message}");
+            }
+        }
+
+        private static string GetPlayerSavePath()
+        {
+            return System.IO.Path.Combine(Application.persistentDataPath, "player_progress.json");
+        }
+
+        [System.Serializable]
+        private class PlayerProgressSave
+        {
+            public int haveGold;
         }
 
         private async Task<PlayerData> LoadPlayerDataAsync()
@@ -93,6 +174,7 @@ namespace SHIN
                 }
 
                 _playerData = so.Player;
+                ApplyPlayerProgressSave();
                 return _playerData;
             }
             finally

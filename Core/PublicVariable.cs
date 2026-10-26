@@ -5,6 +5,15 @@ namespace SHIN
     /// </summary>
     public static class PublicVariable
     {
+        /// <summary>
+        /// Unity Layer 이름. TagManager와 동일해야 한다.
+        /// Unit = 캐릭터 피격(몸) 판정. DamageObject 프리팹은 Unit에 두지 않는다.
+        /// </summary>
+        public static class Layer
+        {
+            public const string Unit = "Unit";
+        }
+
         public static class Label
         {
             public const string UI = "UI";
@@ -59,7 +68,9 @@ namespace SHIN
             public const string FadeUI = "Assets/Addressables/Prefab/UI/FadeUI.prefab";
             public const string StartUI = "Assets/Addressables/Prefab/UI/StartUI.prefab";
             public const string MainUI = "Assets/Addressables/Prefab/UI/MainUI.prefab";
+            public const string ShopUI = "Assets/Addressables/Prefab/UI/Shop/ShopUI.prefab";
             public const string SurvivorsRunSession = "Assets/Addressables/Prefab/InGame/SurvivorsRun/SurvivorsRunSession.prefab";
+            public const string SurvivorsRunMap = "Assets/Addressables/Prefab/InGame/SurvivorsRun/SurvivorsRunMap.prefab";
             // 프리팹 파일명 오타(Chracter)는 에셋 경로와 동일하게 유지
             public const string SurvivorsRunCharacterSelectUI =
                 "Assets/Addressables/Prefab/InGame/SurvivorsRun/UI/SurvivorsRunChracterSelectUI.prefab";
@@ -67,6 +78,20 @@ namespace SHIN
                 "Assets/Addressables/Prefab/InGame/SurvivorsRun/UI/SurvivorsRunChracterSelectItem.prefab";
             public const string SurvivorsRunCharacterSO = "Assets/Addressables/SO/SurvivorsRunCharacterSO.asset";
             public const string SurvivorsRunEnemySO = "Assets/Addressables/SO/SurvivorsRunEnemySO.asset";
+            public const string SurvivorsRunMapSO = "Assets/Addressables/SO/SurvivorsRunMapSO.asset";
+            public const string SurvivorsRunItemDataSO = "Assets/Addressables/SO/SurvivorsRunItemDataSO.asset";
+            public const string SurvivorsRunEnemyDeathEffect =
+                "Assets/Addressables/Prefab/InGame/SurvivorsRun/DamageObject/HitEffect/sr_enemy_death_confetti.prefab";
+            public const string SurvivorsRunTargetObject =
+                "Assets/Addressables/Prefab/InGame/SurvivorsRun/TargetObject/TargetObject.prefab";
+            public const string SurvivorsRunInGameUI =
+                "Assets/Addressables/Prefab/InGame/SurvivorsRun/UI/SurvivorsRunInGameUI.prefab";
+            public const string SurvivorsRunLevelUpUI =
+                "Assets/Addressables/Prefab/InGame/SurvivorsRun/UI/SurvivorsRunLevelUpUI.prefab";
+            public const string SurvivorsRunResultUI =
+                "Assets/Addressables/Prefab/InGame/SurvivorsRun/UI/SurvivorsRunResultUI.prefab";
+            public const string SurvivorsRunPauseUI =
+                "Assets/Addressables/Prefab/InGame/SurvivorsRun/UI/SurvivorsRunPauseUI.prefab";
             /// <summary>타이틀 BGM. 에셋 추가 후 GameManager._titleBgmAddress에 이 경로를 넣는다.</summary>
             public const string TitleBgm = "Assets/Addressables/Audio/BGM/bgm_title_001.mp3";
         }

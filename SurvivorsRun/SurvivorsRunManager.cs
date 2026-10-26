@@ -11,11 +11,19 @@ namespace SHIN
         private SurvivorsRunUnitData _selectedCharacter;
         private GameObject _playerInstance;
         private SurvivorsRunUnitBase _playerUnit;
+        private SurvivorsRunItemDataSO _itemDataSo;
+        private string _uniqueSkillTid;
+        private SurvivorsRunItemData _uniqueSkillData;
+        private readonly SurvivorsRunPlayerInfo _playerInfo = new();
 
         public float TimeScale => _timeScale;
         public SurvivorsRunCombat Combat => _combat;
         public SurvivorsRunUnitData SelectedCharacter => _selectedCharacter;
         public SurvivorsRunUnitBase PlayerUnit => _playerUnit;
+        public SurvivorsRunItemDataSO ItemDataSo => _itemDataSo;
+        public SurvivorsRunPlayerInfo PlayerInfo => _playerInfo;
+        public SurvivorsRunItemData UniqueSkillData => _uniqueSkillData;
+        public string UniqueSkillTid => _uniqueSkillTid;
 
         private void Awake()
         {
@@ -88,18 +96,48 @@ namespace SHIN
             SetPlayerControlEnabled(false);
 
             var uiManager = GameManager.Instance?.UIManager;
+
+            // 로딩 중 화면을 검정으로 가림 → 준비 후 페이드인 → START → 전투 시작
+            if (uiManager != null)
+                await uiManager.FadeOutAsync(0.25f);
+
             if (uiManager != null && _characterSelectUI != null)
             {
                 uiManager.Close(_characterSelectUI, restoreVisibleStack: false);
                 _characterSelectUI = null;
             }
 
-            // 뱀서 인풋 → 스폰 → 플레이어 캐싱 → 조작 시작
+            // 고정 디펜스: 맵 → 플레이어 고정 스폰 → 카메라 고정 → 이동조작 OFF
             EnableInputMap(InputManager.ActionMapName.SurvivorsRun);
+            await EnsureMapAsync();
             await SpawnSelectedCharacterAsync(data);
 
-            if (_playerUnit != null)
-                SetPlayerControlEnabled(true);
+            if (_playerUnit == null)
+            {
+                if (uiManager != null)
+                    await uiManager.FadeInAsync(0.3f);
+                return;
+            }
+
+            BindCameraFixed();
+            SetPlayerControlEnabled(false);
+            await EnsureTargetingObjectAsync();
+            await ShowInGameHudAsync();
+
+            // 타이머·스폰 전에 일시정지 유지 → 페이드인 → START → 전투
+            PauseForOverlay();
+            if (uiManager != null)
+            {
+                await uiManager.SetFadeAlphaImmediateAsync(1f);
+                await uiManager.FadeInAsync(0.45f);
+            }
+
+            if (_inGameUi != null)
+                await _inGameUi.PlayStartAnnounceAsync();
+
+            ResumeFromOverlay();
+            await BeginCycleTimerAsync();
+            await StartEnemySpawningAsync();
         }
 
         private async Task SpawnSelectedCharacterAsync(SurvivorsRunUnitData data)
@@ -125,7 +163,8 @@ namespace SHIN
             var instance = await resourceManager.InstantiateAsync(
                 data.UnitPrefabPath.Trim(),
                 parent: transform,
-                startInactive: false);
+                startInactive: true,
+                worldPosition: GetPlayerSpawnWorldPosition());
 
             if (this == null)
             {
@@ -140,7 +179,7 @@ namespace SHIN
                 return;
             }
 
-            instance.transform.localPosition = Vector3.zero;
+            instance.transform.position = GetPlayerSpawnWorldPosition();
             _playerInstance = instance;
 
             _playerUnit = instance.GetComponent<SurvivorsRunUnitBase>();
@@ -157,20 +196,152 @@ namespace SHIN
                     Mathf.RoundToInt(data.UnitAttack),
                     data.UnitSpeed,
                     attackSpeed: 1f);
+                _playerUnit.transform.position = ClampToMap(_playerUnit.transform.position);
+                var itemController = EnsurePlayerItemController(_playerUnit);
+                _playerInfo.Reset();
+                _playerInfo.BindItemController(itemController);
+                await ApplyStartWeaponAsync(data);
+                // 임시 관전 파밍: 액티브·고유 스킬 비활성 (시작 무기만).
+                // await ApplyUniqueSkillAsync(data);
+                // await ApplyStartActiveAsync(data);
             }
             else
             {
                 Debug.LogWarning("[SurvivorsRunManager] 생성된 프리팹에 SurvivorsRunUnitBase가 없습니다.");
             }
+
+            instance.SetActive(true);
+        }
+
+        private async Task EnsureItemDataSoAsync()
+        {
+            if (_itemDataSo != null)
+                return;
+
+            var resourceManager = GameManager.Instance?.ResourceManager;
+            if (resourceManager == null)
+            {
+                Debug.LogError("[SurvivorsRunManager] ResourceManager가 없어 ItemDataSO를 로드할 수 없습니다.");
+                return;
+            }
+
+            _itemDataSo = await resourceManager.LoadAsync<SurvivorsRunItemDataSO>(
+                PublicVariable.Address.SurvivorsRunItemDataSO);
+
+            if (_itemDataSo == null)
+                Debug.LogError("[SurvivorsRunManager] SurvivorsRunItemDataSO 로드에 실패했습니다.");
+        }
+
+        private async Task ApplyStartWeaponAsync(SurvivorsRunUnitData data)
+        {
+            if (data == null)
+                return;
+
+            if (string.IsNullOrWhiteSpace(data.StartWeaponTid))
+                return;
+
+            await EnsureItemDataSoAsync();
+            if (_itemDataSo == null)
+                return;
+
+            var itemData = _itemDataSo.GetByTid(data.StartWeaponTid.Trim());
+            if (itemData == null)
+            {
+                Debug.LogWarning(
+                    $"[SurvivorsRunManager] 시작 무기를 찾지 못했습니다: {data.StartWeaponTid} ({data.UnitId})");
+                return;
+            }
+
+            // 시작 무기는 획득 팝업 생략 (런 시작 연출과 겹침 방지)
+            _playerInfo.AddItem(itemData, stack: 1, announce: false);
+        }
+
+        private async Task ApplyUniqueSkillAsync(SurvivorsRunUnitData data)
+        {
+            _uniqueSkillTid = null;
+            _uniqueSkillData = null;
+
+            if (data == null || string.IsNullOrWhiteSpace(data.UniqueSkillTid))
+                return;
+
+            await EnsureItemDataSoAsync();
+            if (_itemDataSo == null)
+                return;
+
+            var tid = data.UniqueSkillTid.Trim();
+            var itemData = _itemDataSo.GetByTid(tid);
+            if (itemData == null)
+            {
+                Debug.LogWarning(
+                    $"[SurvivorsRunManager] 고유 스킬을 찾지 못했습니다: {tid} ({data.UnitId})");
+                return;
+            }
+
+            if (itemData.ItemType != SURVIVORSRUN_ITEM_TYPE.UNIQUE)
+            {
+                Debug.LogWarning(
+                    $"[SurvivorsRunManager] 고유 스킬 tid의 ItemType이 UNIQUE가 아닙니다: {tid} ({itemData.ItemType})");
+                return;
+            }
+
+            _uniqueSkillTid = tid;
+            _uniqueSkillData = itemData;
+            _playerInfo.AddItem(itemData);
+        }
+
+        private async Task ApplyStartActiveAsync(SurvivorsRunUnitData data)
+        {
+            if (data == null || string.IsNullOrWhiteSpace(data.StartActiveTid))
+                return;
+
+            await EnsureItemDataSoAsync();
+            if (_itemDataSo == null)
+                return;
+
+            var tid = data.StartActiveTid.Trim();
+            var itemData = _itemDataSo.GetByTid(tid);
+            if (itemData == null)
+            {
+                Debug.LogWarning(
+                    $"[SurvivorsRunManager] 시작 액티브를 찾지 못했습니다: {tid} ({data.UnitId})");
+                return;
+            }
+
+            if (itemData.ItemType != SURVIVORSRUN_ITEM_TYPE.ACTIVE)
+            {
+                Debug.LogWarning(
+                    $"[SurvivorsRunManager] 시작 액티브 tid의 ItemType이 ACTIVE가 아닙니다: {tid} ({itemData.ItemType})");
+                return;
+            }
+
+            _playerInfo.AddItem(itemData);
+        }
+
+        private static SurvivorsRunPlayerItemController EnsurePlayerItemController(
+            SurvivorsRunUnitBase playerUnit)
+        {
+            if (playerUnit == null)
+                return null;
+
+            var controller = playerUnit.GetComponent<SurvivorsRunPlayerItemController>();
+            if (controller == null)
+                controller = playerUnit.gameObject.AddComponent<SurvivorsRunPlayerItemController>();
+
+            controller.BindOwner(playerUnit);
+            return controller;
         }
 
         private void ReleasePlayerInstance()
         {
+            StopCameraFollow();
             SetPlayerControlEnabled(false);
+            ClearAttackTarget();
 
             if (_playerInstance == null)
             {
                 _playerUnit = null;
+                _playerInfo.BindItemController(null);
+                _playerInfo.Reset();
                 return;
             }
 
@@ -182,11 +353,18 @@ namespace SHIN
 
             _playerInstance = null;
             _playerUnit = null;
+            _playerInfo.BindItemController(null);
+            _playerInfo.Reset();
         }
 
         private void OnDestroy()
         {
+            UnbindRunUiEvents();
+            ReleaseAllEnemies();
             ReleasePlayerInstance();
+            ReleaseTargetingObject();
+            ReleaseMapInstance();
+            ClearAllPools();
             RestoreLobbyInputMap();
         }
     }

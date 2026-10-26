@@ -1,0 +1,471 @@
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using UnityEngine;
+
+namespace SHIN
+{
+    /// <summary>
+    /// 적 SO 로드, 스폰/해제, 맵 clamp, 카메라 밖 스폰 좌표.
+    /// </summary>
+    public partial class SurvivorsRunManager
+    {
+        [SerializeField] private Camera _runCamera;
+        [SerializeField] private Transform _enemyRoot;
+        [SerializeField]
+        [Tooltip("우측 스폰 시 카메라/맵 오른쪽에서 얼마나 밖으로 둘지.")]
+        private float _rightSpawnPadding = 1.5f;
+
+        [SerializeField]
+        [Tooltip("누수 판정: 카메라 왼쪽 밖으로 이만큼 나가면 Life 감소. 맵 minX보다 화면이 안쪽이면 화면 기준이 우선.")]
+        private float _leakViewportPadding = 0.15f;
+
+        private SurvivorsRunEnemySO _enemySo;
+        private SurvivorsRunEnemySpawner _enemySpawner;
+        private readonly List<SurvivorsRunUnitBase> _activeEnemies = new();
+        private readonly SurvivorsRunEnemyPressure _enemyPressure = new();
+
+        public SurvivorsRunEnemySO EnemySo => _enemySo;
+        public IReadOnlyList<SurvivorsRunUnitBase> ActiveEnemies => _activeEnemies;
+        public int ActiveEnemyCount => CountAliveEnemies();
+        public SurvivorsRunEnemyPressure EnemyPressure => _enemyPressure;
+
+        /// <summary>
+        /// 스폰 시작 시 압박 초기화.
+        /// 곡선 길이는 선택 맵의 사이클 시간(보스전까지)을 쓴다.
+        /// </summary>
+        public void ResetEnemyPressure(SurvivorsRunEnemyPressureSettings settings)
+        {
+            _enemyPressure.Reset(settings, CycleDurationSeconds);
+        }
+
+        public void TickEnemyPressure(float dt)
+        {
+            _enemyPressure.Tick(dt);
+        }
+
+        /// <summary>잡몹만 압박 이속 배율. 사이클 보스는 항상 1.</summary>
+        public float ResolveEnemyMoveSpeedMult(SurvivorsRunUnitBase enemy)
+        {
+            if (enemy != null && _activeBoss != null && ReferenceEquals(enemy, _activeBoss))
+                return 1f;
+
+            return _enemyPressure != null ? Mathf.Max(0.01f, _enemyPressure.MoveSpeedMult) : 1f;
+        }
+
+        /// <summary>스폰 시점 체력. 이미 나온 적은 그대로, 이후 스폰분부터 배율 적용.</summary>
+        public int ResolveSpawnHp(int baseHp)
+        {
+            var mult = _enemyPressure != null ? _enemyPressure.HpMult : 1f;
+            return Mathf.Max(1, Mathf.RoundToInt(Mathf.Max(1, baseHp) * Mathf.Max(0.01f, mult)));
+        }
+
+        private void EnsureEnemyRuntimeRefs()
+        {
+            if (_runCamera == null)
+                _runCamera = GetComponentInChildren<Camera>(true);
+
+            if (_enemyRoot == null)
+            {
+                var root = transform.Find("Enemies");
+                if (root == null)
+                {
+                    var go = new GameObject("Enemies");
+                    go.transform.SetParent(transform, false);
+                    _enemyRoot = go.transform;
+                }
+                else
+                {
+                    _enemyRoot = root;
+                }
+            }
+
+            if (_enemySpawner == null)
+            {
+                _enemySpawner = GetComponent<SurvivorsRunEnemySpawner>();
+                if (_enemySpawner == null)
+                    _enemySpawner = gameObject.AddComponent<SurvivorsRunEnemySpawner>();
+            }
+
+            _enemySpawner.Bind(this);
+        }
+
+        private async Task EnsureEnemySoAsync()
+        {
+            if (_enemySo != null)
+                return;
+
+            var resourceManager = GameManager.Instance?.ResourceManager;
+            if (resourceManager == null)
+            {
+                Debug.LogError("[SurvivorsRunManager] ResourceManager가 없어 EnemySO를 로드할 수 없습니다.");
+                return;
+            }
+
+            _enemySo = await resourceManager.LoadAsync<SurvivorsRunEnemySO>(
+                PublicVariable.Address.SurvivorsRunEnemySO);
+
+            if (_enemySo == null)
+                Debug.LogError("[SurvivorsRunManager] SurvivorsRunEnemySO 로드에 실패했습니다.");
+        }
+
+        private async Task StartEnemySpawningAsync()
+        {
+            EnsureEnemyRuntimeRefs();
+            await EnsureEnemySoAsync();
+            if (_enemySo == null)
+                return;
+
+            _enemySpawner.SetSpawningEnabled(true);
+        }
+
+        private void StopEnemySpawning()
+        {
+            if (_enemySpawner != null)
+                _enemySpawner.SetSpawningEnabled(false);
+        }
+
+        public SurvivorsRunUnitData GetEnemyData(string unitId)
+        {
+            return _enemySo != null ? _enemySo.GetByUnitId(unitId) : null;
+        }
+
+        public SurvivorsRunUnitData GetDefaultEnemyData()
+        {
+            if (_enemySo?.EnemyList == null || _enemySo.EnemyList.Count == 0)
+                return null;
+
+            for (var i = 0; i < _enemySo.EnemyList.Count; i++)
+            {
+                if (_enemySo.EnemyList[i] != null)
+                    return _enemySo.EnemyList[i];
+            }
+
+            return null;
+        }
+
+        public async Task<SurvivorsRunUnitBase> SpawnEnemyAsync(SurvivorsRunUnitData data, Vector3 position)
+        {
+            if (data == null)
+                return null;
+
+            if (string.IsNullOrWhiteSpace(data.UnitPrefabPath))
+            {
+                Debug.LogError($"[SurvivorsRunManager] 적 프리팹 경로가 비어 있습니다: {data.UnitId}");
+                return null;
+            }
+
+            EnsureEnemyRuntimeRefs();
+            // 좌측 누수를 위해 X min clamp는 스폰 시에도 강제하지 않는다. Y만 맞춤.
+            position = ClampEnemyMarchPosition(position);
+
+            var poolKey = data.UnitPrefabPath.Trim();
+            // 비활성 대여 후 좌표 세팅 → 원점 플래시 방지. 풀 비면 ExpandBatch만큼 생성.
+            var instance = await RentAsync(
+                poolKey,
+                activeParent: _enemyRoot,
+                activate: false);
+
+            if (this == null)
+            {
+                if (instance != null)
+                    ReturnPooled(poolKey, instance);
+                return null;
+            }
+
+            if (instance == null)
+            {
+                Debug.LogError($"[SurvivorsRunManager] 적 프리팹 풀 대여 실패: {data.UnitPrefabPath}");
+                return null;
+            }
+
+            instance.transform.position = position;
+            instance.transform.rotation = Quaternion.identity;
+
+            var enemy = instance.GetComponent<SurvivorsRunEnemyBase>();
+            if (enemy == null)
+                enemy = instance.GetComponentInChildren<SurvivorsRunEnemyBase>(true);
+
+            if (enemy == null)
+            {
+                Debug.LogError(
+                    $"[SurvivorsRunManager] 적 프리팹에 SurvivorsRunEnemyBase가 없습니다: {data.UnitPrefabPath}");
+                ReturnPooled(poolKey, instance);
+                return null;
+            }
+
+            var hp = ResolveSpawnHp(data.UnitHP);
+            enemy.BindManager(this);
+            enemy.Setup(
+                data.UnitId,
+                SURVIVORSRUN_UNIT_TYPE.ENEMY,
+                hp,
+                Mathf.RoundToInt(data.UnitAttack),
+                data.UnitSpeed,
+                attackSpeed: 1f);
+            enemy.CaptureBaseMoveSpeed();
+            enemy.ResetMarchState();
+
+            var loadout = instance.GetComponent<SurvivorsRunEnemyLoadoutController>();
+            if (loadout == null)
+                loadout = instance.AddComponent<SurvivorsRunEnemyLoadoutController>();
+            loadout.Setup(data.EnemyLoadout);
+
+            instance.SetActive(true);
+            _activeEnemies.Add(enemy);
+            return enemy;
+        }
+
+        public async Task<SurvivorsRunUnitBase> SpawnEnemyAsync(string unitId, Vector3 position)
+        {
+            await EnsureEnemySoAsync();
+            return await SpawnEnemyAsync(GetEnemyData(unitId), position);
+        }
+
+        /// <summary>
+        /// 고정 디펜스 스폰: 화면/맵 오른쪽 + 맵 enemySpawn Y 레인.
+        /// </summary>
+        /// <param name="useSpawnLaneCenterY">true면 Y를 레인 중앙(보스용).</param>
+        public bool TryGetEnemySpawnPosition(out Vector3 position, bool useSpawnLaneCenterY = false)
+        {
+            position = default;
+            EnsureEnemyRuntimeRefs();
+
+            var cam = _runCamera != null ? _runCamera : Camera.main;
+            if (cam == null && _activeMap == null)
+                return false;
+
+            float spawnX;
+            float spawnY;
+
+            if (cam != null)
+            {
+                GetCameraHalfExtents(cam, out var halfW, out _);
+                spawnX = cam.transform.position.x + halfW + Mathf.Max(0.1f, _rightSpawnPadding);
+            }
+            else
+            {
+                _activeMap.GetClampLocal(out var minLocal, out var maxLocal);
+                var minWorld = _activeMap.transform.TransformPoint(new Vector3(minLocal.x, minLocal.y, 0f));
+                var maxWorld = _activeMap.transform.TransformPoint(new Vector3(maxLocal.x, maxLocal.y, 0f));
+                spawnX = Mathf.Max(minWorld.x, maxWorld.x) + Mathf.Max(0.1f, _rightSpawnPadding);
+            }
+
+            if (_activeMap != null)
+            {
+                spawnY = useSpawnLaneCenterY
+                    ? _activeMap.GetEnemySpawnCenterYWorld()
+                    : _activeMap.GetRandomEnemySpawnYWorld();
+            }
+            else if (cam != null)
+            {
+                // 맵 없을 때만 카메라 Y 중앙 폴백
+                spawnY = cam.transform.position.y;
+            }
+            else
+            {
+                return false;
+            }
+
+            position = new Vector3(spawnX, spawnY, 0f);
+            position = ClampEnemyMarchPosition(position);
+
+            if (cam != null)
+            {
+                GetCameraHalfExtents(cam, out var halfW, out _);
+                var rightEdge = cam.transform.position.x + halfW + Mathf.Max(0.1f, _rightSpawnPadding);
+                if (position.x < rightEdge)
+                    position.x = rightEdge;
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// 행진 적 위치: X max + 적 스폰 Y 레인. X min은 누수를 위해 막지 않는다.
+        /// </summary>
+        public Vector3 ClampEnemyMarchPosition(Vector3 position)
+        {
+            if (_activeMap == null)
+                return ClampToMap(position);
+
+            _activeMap.GetClampLocal(out var minLocal, out var maxLocal);
+            var local = _activeMap.transform.InverseTransformPoint(position);
+            local.y = Mathf.Clamp(local.y, _activeMap.EnemySpawnYMinLocal, _activeMap.EnemySpawnYMaxLocal);
+            local.x = Mathf.Min(local.x, maxLocal.x);
+            local.z = 0f;
+            return _activeMap.transform.TransformPoint(local);
+        }
+
+        /// <summary>
+        /// 누수 판정. 맵 왼쪽(minX)과 카메라 왼쪽 중 <b>더 오른쪽(먼저 닿는)</b> 경계를 쓴다.
+        /// 맵이 화면보다 넓어 화면 밖으로 나간 뒤에도 Life가 안 깎이던 문제를 막는다.
+        /// </summary>
+        public bool HasEnemyLeaked(Vector3 worldPosition)
+        {
+            var leakWorldX = float.NegativeInfinity;
+            var hasBoundary = false;
+
+            if (_activeMap != null)
+            {
+                _activeMap.GetClampLocal(out var minLocal, out _);
+                var mapLeft = _activeMap.transform.TransformPoint(new Vector3(minLocal.x, 0f, 0f)).x;
+                leakWorldX = mapLeft;
+                hasBoundary = true;
+            }
+
+            var cam = _runCamera != null ? _runCamera : Camera.main;
+            if (cam != null)
+            {
+                GetCameraHalfExtents(cam, out var halfW, out _);
+                var cameraLeft = cam.transform.position.x - halfW - Mathf.Max(0f, _leakViewportPadding);
+                leakWorldX = hasBoundary ? Mathf.Max(leakWorldX, cameraLeft) : cameraLeft;
+                hasBoundary = true;
+            }
+
+            if (!hasBoundary)
+                return false;
+
+            return worldPosition.x <= leakWorldX;
+        }
+
+        /// <summary>
+        /// 적이 왼쪽을 통과했을 때.
+        /// 일반 적: Life −1 (0이면 패배). 사이클 목표 적(보스): 즉시 패배.
+        /// </summary>
+        public void NotifyEnemyLeaked(SurvivorsRunUnitBase enemy)
+        {
+            if (enemy == null)
+                return;
+
+            if (IsRunFinished)
+                return;
+
+            var isCycleBoss = _activeBoss != null && ReferenceEquals(enemy, _activeBoss);
+            if (isCycleBoss)
+                _activeBoss = null;
+
+            DespawnEnemy(enemy);
+
+            if (isCycleBoss)
+            {
+                Debug.Log($"[SurvivorsRun] 사이클 목표 적 누수 → 패배 (enemy={enemy.Tid})");
+                StopEnemySpawning();
+                ShowDefeatUi();
+                return;
+            }
+
+            var life = _playerInfo.LoseLife(1);
+            Debug.Log($"[SurvivorsRun] 적 누수 → Life={life} (enemy={enemy.Tid})");
+
+            if (life <= 0)
+            {
+                StopEnemySpawning();
+                ShowDefeatUi();
+            }
+        }
+
+        public Vector3 ClampToMap(Vector3 position)
+        {
+            if (_activeMap != null)
+                return _activeMap.ClampPosition(position);
+
+            return position;
+        }
+
+        public void PruneInactiveEnemies()
+        {
+            for (var i = _activeEnemies.Count - 1; i >= 0; i--)
+            {
+                var enemy = _activeEnemies[i];
+                if (enemy != null && !enemy.IsDead && enemy.gameObject.activeInHierarchy)
+                    continue;
+
+                DespawnEnemy(enemy);
+            }
+        }
+
+        /// <summary>
+        /// 활성 목록에서 제거하고 풀에 반환한다.
+        /// </summary>
+        public void DespawnEnemy(SurvivorsRunUnitBase enemy)
+        {
+            if (enemy == null)
+                return;
+
+            ClearAttackTargetIfMatch(enemy);
+            _activeEnemies.Remove(enemy);
+            ReturnEnemyToPool(enemy);
+        }
+
+        private void ReturnEnemyToPool(SurvivorsRunUnitBase enemy)
+        {
+            if (enemy == null || enemy.gameObject == null)
+                return;
+
+            if (TryReturnPooled(enemy.gameObject))
+                return;
+
+            ReturnEnemyToPoolByTid(enemy);
+        }
+
+        private void ReturnEnemyToPoolByTid(SurvivorsRunUnitBase enemy)
+        {
+            var path = GetEnemyData(enemy.Tid)?.UnitPrefabPath;
+            if (!string.IsNullOrWhiteSpace(path))
+            {
+                ReturnPooled(path.Trim(), enemy.gameObject);
+                return;
+            }
+
+            Destroy(enemy.gameObject);
+        }
+
+        private void ReleaseAllEnemies()
+        {
+            StopEnemySpawning();
+
+            for (var i = _activeEnemies.Count - 1; i >= 0; i--)
+            {
+                var enemy = _activeEnemies[i];
+                if (enemy == null)
+                {
+                    _activeEnemies.RemoveAt(i);
+                    continue;
+                }
+
+                ClearAttackTargetIfMatch(enemy);
+                ReturnEnemyToPool(enemy);
+            }
+
+            _activeEnemies.Clear();
+        }
+
+        private int CountAliveEnemies()
+        {
+            var count = 0;
+            for (var i = 0; i < _activeEnemies.Count; i++)
+            {
+                var enemy = _activeEnemies[i];
+                if (enemy != null && !enemy.IsDead && enemy.gameObject.activeInHierarchy)
+                    count++;
+            }
+
+            return count;
+        }
+
+        private static void GetCameraHalfExtents(Camera cam, out float halfW, out float halfH)
+        {
+            if (cam.orthographic)
+            {
+                halfH = cam.orthographicSize;
+                halfW = halfH * cam.aspect;
+                return;
+            }
+
+            // SurvivorsRun은 직교 카메라 기준. 원근이면 대략 z=10 평면 가정.
+            var dist = Mathf.Abs(cam.transform.position.z);
+            halfH = Mathf.Tan(cam.fieldOfView * 0.5f * Mathf.Deg2Rad) * dist;
+            halfW = halfH * cam.aspect;
+        }
+    }
+}

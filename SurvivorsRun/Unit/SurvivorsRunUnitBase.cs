@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 
 namespace SHIN
@@ -17,7 +18,6 @@ namespace SHIN
 
         private SURVIVORSRUN_UNIT_TYPE _unitType;
         private SurvivorsRunManager _manager;
-        private SurvivorsRunAttack _attackModule;
         private bool _isDead;
 
         public string Tid => _tid;
@@ -28,13 +28,14 @@ namespace SHIN
         public float AttackSpeed => _attackSpeed;
         public SURVIVORSRUN_UNIT_TYPE UnitType => _unitType;
         public SurvivorsRunManager Manager => _manager;
-        public SurvivorsRunAttack AttackModule => _attackModule;
         public bool IsDead => _isDead || _hp <= 0;
+
+        /// <summary>현재 HP, MaxHP.</summary>
+        public event Action<int, int> HpChanged;
 
         public void BindManager(SurvivorsRunManager manager)
         {
             _manager = manager;
-            EnsureAttackModule();
         }
 
         public void Setup(
@@ -54,21 +55,19 @@ namespace SHIN
             _attackSpeed = Mathf.Max(0f, attackSpeed);
             _characterSpeed = 1f;
             _isDead = false;
-
-            EnsureAttackModule();
-            if (_attackModule != null)
-                _attackModule.ResetCooldown();
+            HpChanged?.Invoke(_hp, _maxHp);
         }
 
-        private void EnsureAttackModule()
+        /// <summary>풀 재사용·재시작 시 HP만 풀피로 돌린다.</summary>
+        public void RestoreFullHp()
         {
-            if (_attackModule == null)
-                _attackModule = GetComponent<SurvivorsRunAttack>();
-
-            if (_attackModule == null)
-                _attackModule = gameObject.AddComponent<SurvivorsRunAttack>();
-
-            _attackModule.BindOwner(this);
+            if (_maxHp <= 0)
+                _maxHp = 1;
+            _hp = _maxHp;
+            _isDead = false;
+            if (!gameObject.activeSelf)
+                gameObject.SetActive(true);
+            HpChanged?.Invoke(_hp, _maxHp);
         }
 
         public void SetMoveSpeed(float moveSpeed)
@@ -88,7 +87,8 @@ namespace SHIN
             if (direction.sqrMagnitude <= 0.0001f)
                 return;
 
-            var delta = direction.normalized * (_moveSpeed * Time.deltaTime);
+            var scale = _manager != null ? _manager.TimeScale : 1f;
+            var delta = direction.normalized * (_moveSpeed * Time.deltaTime * scale);
             var pos = transform.position;
             pos.x += delta.x;
             pos.y += delta.y;
@@ -104,6 +104,11 @@ namespace SHIN
                 return false;
 
             _hp = Mathf.Max(0, _hp - damage);
+            Debug.Log(
+                $"[SurvivorsRun] HP {_tid ?? name}: -{damage} → {_hp}/{_maxHp}" +
+                (attacker != null ? $" (by {attacker.Tid ?? attacker.name})" : string.Empty),
+                this);
+            HpChanged?.Invoke(_hp, _maxHp);
             OnDamaged(damage, attacker);
 
             if (_hp <= 0)
@@ -123,6 +128,15 @@ namespace SHIN
 
             _isDead = true;
             _hp = 0;
+
+            if (_unitType == SURVIVORSRUN_UNIT_TYPE.PLAYER)
+            {
+                Debug.Log(
+                    $"[SurvivorsRun] Player death: {_tid ?? name}" +
+                    (killer != null ? $" (killed by {killer.Tid ?? killer.name})" : string.Empty),
+                    this);
+            }
+
             OnDied(killer);
             gameObject.SetActive(false);
         }
