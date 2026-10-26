@@ -10,7 +10,7 @@ namespace SHIN
     /// <summary>
     /// Addressables Load / Instantiate / Release 진입점.
     /// </summary>
-    public class ResourceManager : ManagerBase
+    public partial class ResourceManager : ManagerBase
     {
         private readonly Dictionary<string, AsyncOperationHandle> _assetHandles = new();
         private readonly Dictionary<string, AsyncOperationHandle> _labelHandles = new();
@@ -31,6 +31,7 @@ namespace SHIN
                 return cached.Status == AsyncOperationStatus.Succeeded ? cached.Result as T : null;
             }
 
+            TraceLoadStarted(address, ResourceTraceKind.Asset);
             var handle = Addressables.LoadAssetAsync<T>(address);
             _assetHandles[address] = handle;
             await handle.Task;
@@ -39,9 +40,11 @@ namespace SHIN
             {
                 Debug.LogError($"[ResourceManager] 로드 실패: {address}");
                 _assetHandles.Remove(address);
+                TraceLoadFinished(address, ResourceTraceKind.Asset, false);
                 return null;
             }
 
+            TraceLoadFinished(address, ResourceTraceKind.Asset, true);
             return handle.Result;
         }
 
@@ -132,6 +135,7 @@ namespace SHIN
                 return;
             }
 
+            TraceLoadStarted(label, ResourceTraceKind.Label);
             var handle = Addressables.LoadAssetsAsync<UnityEngine.Object>(label, null);
             _labelHandles[label] = handle;
             await handle.Task;
@@ -140,7 +144,11 @@ namespace SHIN
             {
                 Debug.LogError($"[ResourceManager] 라벨 프리로드 실패: {label}");
                 _labelHandles.Remove(label);
+                TraceLoadFinished(label, ResourceTraceKind.Label, false);
+                return;
             }
+
+            TraceLoadFinished(label, ResourceTraceKind.Label, true);
         }
 
         public void Release(string address)
@@ -152,6 +160,7 @@ namespace SHIN
                 Addressables.Release(handle);
 
             _assetHandles.Remove(address);
+            TraceReleased(address, ResourceTraceKind.Asset);
         }
 
         public void ReleaseInstance(GameObject instance)
@@ -163,6 +172,8 @@ namespace SHIN
             // Load+Instantiate 경로면 Destroy로 정리한다.
             if (!Addressables.ReleaseInstance(instance))
                 UnityEngine.Object.Destroy(instance);
+
+            TraceReleased(instance.name, ResourceTraceKind.Instance);
         }
 
         public void ReleaseLabel(string label)
@@ -174,14 +185,16 @@ namespace SHIN
                 Addressables.Release(handle);
 
             _labelHandles.Remove(label);
+            TraceReleased(label, ResourceTraceKind.Label);
         }
 
         public void ReleaseAllAssets()
         {
-            foreach (var handle in _assetHandles.Values)
+            foreach (var pair in _assetHandles)
             {
-                if (handle.IsValid())
-                    Addressables.Release(handle);
+                if (pair.Value.IsValid())
+                    Addressables.Release(pair.Value);
+                TraceReleased(pair.Key, ResourceTraceKind.Asset);
             }
 
             _assetHandles.Clear();
@@ -189,10 +202,11 @@ namespace SHIN
 
         public void ReleaseAllLabels()
         {
-            foreach (var handle in _labelHandles.Values)
+            foreach (var pair in _labelHandles)
             {
-                if (handle.IsValid())
-                    Addressables.Release(handle);
+                if (pair.Value.IsValid())
+                    Addressables.Release(pair.Value);
+                TraceReleased(pair.Key, ResourceTraceKind.Label);
             }
 
             _labelHandles.Clear();
