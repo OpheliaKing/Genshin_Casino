@@ -27,6 +27,8 @@ namespace SHIN
         private AudioSource _bgmSource;
         private Transform _seRoot;
         private int _seCursor;
+        private ResourceManager _resourceManagerHook;
+        private bool _assetReleaseHooked;
 
         private void Awake()
         {
@@ -40,6 +42,7 @@ namespace SHIN
 
             address = address.Trim();
             EnsureAudioSetup();
+            HookAssetRelease();
 
             // 캐시 히트는 await 없이 즉시 재생 (버튼 입력 지연 방지)
             if (_clipCache.TryGetValue(address, out var cached) && cached != null)
@@ -69,6 +72,7 @@ namespace SHIN
                 return;
 
             EnsureAudioSetup();
+            HookAssetRelease();
             var tasks = new List<Task>();
             foreach (var raw in addresses)
             {
@@ -212,6 +216,49 @@ namespace SHIN
             var fallback = _seSources[_seCursor];
             _seCursor = (_seCursor + 1) % _seSources.Count;
             return fallback;
+        }
+
+        private void HookAssetRelease()
+        {
+            if (_assetReleaseHooked)
+                return;
+
+            var resourceManager = GameManager.Instance?.ResourceManager;
+            if (resourceManager == null)
+                return;
+
+            _resourceManagerHook = resourceManager;
+            _resourceManagerHook.AssetReleased += OnAssetReleased;
+            _assetReleaseHooked = true;
+        }
+
+        private void OnAssetReleased(string address)
+        {
+            if (!_clipCache.TryGetValue(address, out var clip))
+                return;
+
+            _clipCache.Remove(address);
+            if (_bgmSource != null && _bgmSource.clip == clip)
+                StopBgm();
+
+            for (var i = 0; i < _seSources.Count; i++)
+            {
+                var source = _seSources[i];
+                if (source == null || source.clip != clip)
+                    continue;
+
+                source.Stop();
+                source.clip = null;
+            }
+        }
+
+        private void OnDestroy()
+        {
+            if (_resourceManagerHook == null)
+                return;
+
+            _resourceManagerHook.AssetReleased -= OnAssetReleased;
+            _resourceManagerHook = null;
         }
 
         private void EnsureAudioSetup()

@@ -220,6 +220,34 @@ namespace SHIN
                 RestoreVisibleStack();
         }
 
+        /// <summary>
+        /// 스택 또는 캐시에 있는 UI 인스턴스를 파괴한다.
+        /// 풀스크린은 기본 Close에서 숨기기만 하므로, 모드 종료 때 이 경로를 쓴다.
+        /// </summary>
+        public void ReleaseUi(string address, bool restoreVisibleStack = false)
+        {
+            if (string.IsNullOrEmpty(address))
+                return;
+
+            if (TryRemoveAddress(address, out var entry))
+            {
+                if (entry.GameObject != null)
+                    HideEntry(entry);
+
+                ReleaseEntry(entry, forceRelease: true);
+                if (restoreVisibleStack)
+                    RestoreVisibleStack();
+                return;
+            }
+
+            if (!_cachedInstances.TryGetValue(address, out var cached))
+                return;
+
+            _cachedInstances.Remove(address);
+            if (cached != null)
+                ResolveResourceManager()?.ReleaseInstance(cached);
+        }
+
         public void CloseAll()
         {
             while (_uiStack.Count > 0)
@@ -428,6 +456,33 @@ namespace SHIN
         {
             ui = go.GetComponent<UIBase>() ?? go.GetComponentInChildren<UIBase>(true);
             return ui != null;
+        }
+
+        private bool TryRemoveAddress(string address, out UIStackEntry found)
+        {
+            found = null;
+            if (_uiStack.Count == 0)
+                return false;
+
+            var kept = new Stack<UIStackEntry>();
+            var removed = false;
+            while (_uiStack.Count > 0)
+            {
+                var current = _uiStack.Pop();
+                if (!removed && current.Address == address)
+                {
+                    found = current;
+                    removed = true;
+                    continue;
+                }
+
+                kept.Push(current);
+            }
+
+            while (kept.Count > 0)
+                _uiStack.Push(kept.Pop());
+
+            return removed;
         }
 
         private void OnDestroy()

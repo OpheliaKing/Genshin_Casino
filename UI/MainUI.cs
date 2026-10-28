@@ -69,7 +69,10 @@ namespace SHIN
         {
             var resourceManager = gameManager.ResourceManager;
             if (resourceManager != null)
+            {
+                resourceManager.BeginScope(ResourceScopeId.Poker);
                 await resourceManager.PreloadLabelAsync(PublicVariable.Label.OpponentSelect);
+            }
 
             uiManager.Close(this, restoreVisibleStack: false);
 
@@ -111,6 +114,7 @@ namespace SHIN
                 return;
             }
 
+            resourceManager.BeginScope(ResourceScopeId.Survivors);
             await resourceManager.PreloadLabelAsync(PublicVariable.Label.Survivors);
 
             uiManager.Close(this, restoreVisibleStack: false);
@@ -123,6 +127,7 @@ namespace SHIN
             if (session == null)
             {
                 Debug.LogError("[MainUI] SurvivorsRunSession 생성에 실패했습니다.");
+                resourceManager.ReleaseScope(ResourceScopeId.Survivors);
                 return;
             }
 
@@ -133,6 +138,8 @@ namespace SHIN
             if (manager == null)
             {
                 Debug.LogError("[MainUI] SurvivorsRunManager가 없습니다.");
+                resourceManager.ReleaseInstance(session);
+                resourceManager.ReleaseScope(ResourceScopeId.Survivors);
                 return;
             }
 

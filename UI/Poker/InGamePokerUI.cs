@@ -35,6 +35,7 @@ namespace SHIN
         private readonly List<PokerCardObject> _opponentCards = new();
         private readonly List<PokerCardObject> _communityCards = new();
         private PokerMatchManager _match;
+        private PokerMatchEndUI _matchEndUi;
         private OpponentData _opponentData;
         private int _displayedPot;
         private bool _hasDisplayedPot;
@@ -237,6 +238,7 @@ namespace SHIN
         public async Task SetupAsync(OpponentData opponentData)
         {
             _opponentData = opponentData;
+            HideMatchEndChoice();
             ClearOpponentModel();
             HideDialog();
             _gameResultUI?.HideImmediate();
@@ -460,6 +462,28 @@ namespace SHIN
             }
 
             return _gameResultUI.PlayAsync(playerWins, holdSeconds);
+        }
+
+        public void ShowMatchEndChoice(bool playerWins)
+        {
+            EnsureMatchEndUi();
+            _matchEndUi.Show(playerWins, () => _match?.Rematch(), () => _match?.ExitToLobby());
+        }
+
+        public void HideMatchEndChoice()
+        {
+            _matchEndUi?.Hide();
+        }
+
+        private void EnsureMatchEndUi()
+        {
+            if (_matchEndUi != null)
+                return;
+
+            var go = new GameObject("PokerMatchEndUI", typeof(RectTransform));
+            go.transform.SetParent(transform, false);
+            _matchEndUi = go.AddComponent<PokerMatchEndUI>();
+            go.SetActive(false);
         }
 
         public Task PlayShowDownAsync(float holdSeconds = 1.8f)

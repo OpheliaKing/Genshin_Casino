@@ -29,6 +29,7 @@ namespace SHIN
         private static Sprite _winSprite;
         private static Sprite _loseSprite;
         private static bool _spritesReady;
+        private static bool _assetReleaseHooked;
         private static Task _spriteLoadTask;
 
         private void Awake()
@@ -218,6 +219,7 @@ namespace SHIN
                 if (resourceManager == null)
                     return;
 
+                HookAssetRelease(resourceManager);
                 var atlas = await resourceManager.LoadAsync<SpriteAtlas>(PublicVariable.Address.InGameAtlas);
                 if (atlas == null)
                 {
@@ -241,6 +243,26 @@ namespace SHIN
                 if (_winSprite == null && _loseSprite == null)
                     _spriteLoadTask = null;
             }
+        }
+
+        private static void HookAssetRelease(ResourceManager resourceManager)
+        {
+            if (_assetReleaseHooked || resourceManager == null)
+                return;
+
+            resourceManager.AssetReleased += OnAssetReleased;
+            _assetReleaseHooked = true;
+        }
+
+        private static void OnAssetReleased(string address)
+        {
+            if (address != PublicVariable.Address.InGameAtlas)
+                return;
+
+            _spritesReady = false;
+            _spriteLoadTask = null;
+            _winSprite = null;
+            _loseSprite = null;
         }
 
         private static Sprite ResolveSprite(SpriteAtlas atlas, string exactName)

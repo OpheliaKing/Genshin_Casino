@@ -261,6 +261,11 @@ namespace SHIN
             await Task.WhenAll(tasks);
         }
 
+        public void PlayTitleBgm()
+        {
+            TryPlayTitleBgm();
+        }
+
         private void TryPlayTitleBgm()
         {
             if (string.IsNullOrWhiteSpace(_titleBgmAddress))

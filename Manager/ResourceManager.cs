@@ -45,6 +45,7 @@ namespace SHIN
             }
 
             TraceLoadFinished(address, ResourceTraceKind.Asset, true);
+            TrackLoadedAsset(address);
             return handle.Result;
         }
 
@@ -149,12 +150,16 @@ namespace SHIN
             }
 
             TraceLoadFinished(label, ResourceTraceKind.Label, true);
+            TrackLoadedLabel(label);
         }
 
         public void Release(string address)
         {
             if (!_assetHandles.TryGetValue(address, out var handle))
                 return;
+
+            UntrackAsset(address);
+            NotifyAssetReleased(address);
 
             if (handle.IsValid())
                 Addressables.Release(handle);
@@ -181,6 +186,8 @@ namespace SHIN
             if (!_labelHandles.TryGetValue(label, out var handle))
                 return;
 
+            UntrackLabel(label);
+
             if (handle.IsValid())
                 Addressables.Release(handle);
 
@@ -192,6 +199,8 @@ namespace SHIN
         {
             foreach (var pair in _assetHandles)
             {
+                UntrackAsset(pair.Key);
+                NotifyAssetReleased(pair.Key);
                 if (pair.Value.IsValid())
                     Addressables.Release(pair.Value);
                 TraceReleased(pair.Key, ResourceTraceKind.Asset);

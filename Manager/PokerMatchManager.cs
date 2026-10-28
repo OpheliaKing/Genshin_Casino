@@ -30,6 +30,7 @@ namespace SHIN
         private InGamePokerUI _ui;
         private bool _waitingPlayer;
         private bool _matchOver;
+        private bool _matchEndChosen;
         private bool _handBusy;
         private bool _dealerIsPlayer;
 
@@ -630,9 +631,70 @@ namespace SHIN
             await StartHandAsync();
         }
 
+        public void Rematch()
+        {
+            if (_matchEndChosen || !_matchOver || this == null)
+                return;
+
+            _matchEndChosen = true;
+            _ = RematchAsync();
+        }
+
+        public void ExitToLobby()
+        {
+            if (_matchEndChosen || !_matchOver)
+                return;
+
+            _matchEndChosen = true;
+            _ = ExitToLobbyAsync(GameManager.Instance);
+        }
+
+        private async Task RematchAsync()
+        {
+            _ui?.HideMatchEndChoice();
+            if (_opponentData == null || _ui == null)
+                return;
+
+            await SetupMatchAsync(_ui, _opponentData);
+            if (this == null || _matchOver)
+                return;
+
+            await BeginGameplayAsync();
+        }
+
+        private static async Task ExitToLobbyAsync(GameManager gameManager)
+        {
+            var uiManager = gameManager?.UIManager;
+            var resourceManager = gameManager?.ResourceManager;
+            var sound = gameManager?.SoundManager;
+            sound?.StopBgm();
+            sound?.StopAllSe();
+
+            if (uiManager == null)
+            {
+                resourceManager?.ReleaseScope(ResourceScopeId.Poker);
+                return;
+            }
+
+            await uiManager.FadeTransitionAsync(() =>
+            {
+                uiManager.ReleaseUi(PublicVariable.Address.InGamePokerUI);
+                uiManager.ReleaseUi(PublicVariable.Address.VersusUI);
+                uiManager.ReleaseUi(PublicVariable.Address.OpponentSelectUI);
+                resourceManager?.ReleaseScope(ResourceScopeId.Poker);
+
+                var shown = new TaskCompletionSource<bool>();
+                uiManager.Show(PublicVariable.Address.MainUI, _ => shown.TrySetResult(true));
+                return shown.Task;
+            });
+
+            GameManager.Instance?.PlayTitleBgm();
+        }
+
         private async Task EndMatchAsync()
         {
             _matchOver = true;
+            _matchEndChosen = false;
             _waitingPlayer = false;
             var win = _playerStack > 0;
             RefreshHud(win ? "매치 승리" : "매치 패배");
@@ -644,6 +706,10 @@ namespace SHIN
             {
                 _ui.ShowOpponentReaction(win ? CharacterExpressionType.LOSE : CharacterExpressionType.WIN);
                 await _ui.PlayGameResultAsync(win);
+                if (this == null || _ui == null)
+                    return;
+
+                _ui.ShowMatchEndChoice(win);
             }
         }
 

@@ -584,9 +584,15 @@ namespace SHIN
             if (uiManager == null)
             {
                 if (resourceManager != null)
+                {
                     resourceManager.ReleaseInstance(sessionGo);
+                    resourceManager.ReleaseScope(ResourceScopeId.Survivors);
+                }
                 else
+                {
                     Destroy(sessionGo);
+                }
+
                 return;
             }
 
@@ -597,10 +603,19 @@ namespace SHIN
                 else if (sessionGo != null)
                     Destroy(sessionGo);
 
+                uiManager.ReleaseUi(PublicVariable.Address.SurvivorsRunCharacterSelectUI);
+                uiManager.ReleaseUi(PublicVariable.Address.SurvivorsRunInGameUI);
+                uiManager.ReleaseUi(PublicVariable.Address.SurvivorsRunLevelUpUI);
+                uiManager.ReleaseUi(PublicVariable.Address.SurvivorsRunPauseUI);
+                uiManager.ReleaseUi(PublicVariable.Address.SurvivorsRunResultUI);
+                resourceManager?.ReleaseScope(ResourceScopeId.Survivors);
+
                 var shown = new TaskCompletionSource<bool>();
                 uiManager.Show(PublicVariable.Address.MainUI, _ => shown.TrySetResult(true));
                 return shown.Task;
             });
+
+            GameManager.Instance?.PlayTitleBgm();
         }
     }
 }
