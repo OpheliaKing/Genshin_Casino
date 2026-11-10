@@ -16,8 +16,11 @@ namespace SHIN.FlowField
         private int[] _cost = System.Array.Empty<int>();
         private Vector3[] _direction = System.Array.Empty<Vector3>();
 
-        private static readonly int[] NeighborX = { 1, -1, 0, 0, 1, 1, -1, -1 };
-        private static readonly int[] NeighborY = { 0, 0, 1, -1, 1, -1, 1, -1 };
+        private static readonly Vector2Int[] Neighbors =
+        {
+            new(1, 0), new(-1, 0), new(0, 1), new(0, -1),
+            new(1, 1), new(1, -1), new(-1, 1), new(-1, -1),
+        };
         private const int OrthogonalCost = 10;
         private const int DiagonalCost = 14;
         private const int Unreachable = int.MaxValue;
@@ -120,14 +123,14 @@ namespace SHIN.FlowField
                 var x = current % _grid.Width;
                 var y = current / _grid.Width;
 
-                for (var n = 0; n < 8; n++)
+                foreach (var offset in Neighbors)
                 {
-                    var nx = x + NeighborX[n];
-                    var ny = y + NeighborY[n];
+                    var nx = x + offset.x;
+                    var ny = y + offset.y;
                     if (!CanStep(x, y, nx, ny))
                         continue;
 
-                    var step = NeighborX[n] != 0 && NeighborY[n] != 0 ? DiagonalCost : OrthogonalCost;
+                    var step = offset.x != 0 && offset.y != 0 ? DiagonalCost : OrthogonalCost;
                     var nextCost = _cost[current] + step;
                     var next = _grid.Index(nx, ny);
                     if (nextCost >= _cost[next])
@@ -157,10 +160,10 @@ namespace SHIN.FlowField
                     var bestCost = _cost[current];
                     var bestX = x;
                     var bestY = y;
-                    for (var n = 0; n < 8; n++)
+                    foreach (var offset in Neighbors)
                     {
-                        var nx = x + NeighborX[n];
-                        var ny = y + NeighborY[n];
+                        var nx = x + offset.x;
+                        var ny = y + offset.y;
                         if (!CanStep(x, y, nx, ny))
                             continue;
 

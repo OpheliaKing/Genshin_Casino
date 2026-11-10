@@ -5,6 +5,7 @@ namespace SHIN.FlowField
 {
     /// <summary>
     /// 플로우 방향을 따라가고, 같은 칸에 겹치지 않게 약간 밀려난다.
+    /// 벽에 막히면 법선 기준으로 미끄러진다.
     /// </summary>
     public class FlowFieldAgent : MonoBehaviour
     {
@@ -12,6 +13,9 @@ namespace SHIN.FlowField
         [SerializeField] private float _speed = 3.5f;
         [SerializeField] private float _separationRadius = 0.65f;
         [SerializeField] private float _arriveDistance = 0.08f;
+        [SerializeField] private float _castRadius = 0.2f;
+        [SerializeField] private float _castHeight = 0.45f;
+        [SerializeField] private float _skin = 0.02f;
 
         private static readonly List<FlowFieldAgent> Active = new();
 
@@ -64,9 +68,79 @@ namespace SHIN.FlowField
                 return;
             }
 
-            var next = transform.position + move * (_speed * Time.deltaTime);
+            var delta = move * (_speed * Time.deltaTime);
+            delta.y = 0f;
+
+            var next = transform.position + SlideMove(delta);
             next.y = transform.position.y;
             transform.position = next;
+        }
+
+        private Vector3 SlideMove(Vector3 delta)
+        {
+            var distance = delta.magnitude;
+            if (distance < 0.0001f)
+                return Vector3.zero;
+
+            var direction = delta / distance;
+            var origin = transform.position + Vector3.up * _castHeight;
+
+            if (!TryCastWall(origin, direction, distance, out var hit))
+                return delta;
+
+            var traveled = Mathf.Max(0f, hit.distance - _skin);
+            var moved = direction * traveled;
+
+            var remaining = delta - direction * traveled;
+            var slide = remaining - Vector3.Dot(remaining, hit.normal) * hit.normal;
+            slide.y = 0f;
+
+            var slideDistance = slide.magnitude;
+            if (slideDistance < 0.0001f)
+                return moved;
+
+            var slideDirection = slide / slideDistance;
+            var slideOrigin = origin + moved;
+            if (!TryCastWall(slideOrigin, slideDirection, slideDistance, out var slideHit))
+                return moved + slide;
+
+            var slideTraveled = Mathf.Max(0f, slideHit.distance - _skin);
+            return moved + slideDirection * slideTraveled;
+        }
+
+        private bool TryCastWall(Vector3 origin, Vector3 direction, float distance, out RaycastHit hit)
+        {
+            var hits = Physics.SphereCastAll(origin, _castRadius, direction, distance + _skin);
+            var bestDistance = float.MaxValue;
+            var found = false;
+            hit = default;
+
+            for (var i = 0; i < hits.Length; i++)
+            {
+                var candidate = hits[i];
+                if (!IsWall(candidate.collider))
+                    continue;
+
+                if (candidate.distance >= bestDistance)
+                    continue;
+
+                bestDistance = candidate.distance;
+                hit = candidate;
+                found = true;
+            }
+
+            return found;
+        }
+
+        private static bool IsWall(Collider collider)
+        {
+            if (collider == null)
+                return false;
+
+            if (collider.GetComponent<FlowFieldBlock>() != null)
+                return true;
+
+            return collider.CompareTag("FlowFieldObstacle");
         }
 
         private Vector3 Separation()

@@ -11,8 +11,6 @@ namespace SHIN.FlowField
         [SerializeField] private int _height = 20;
         [SerializeField] private float _cellSize = 1f;
         [SerializeField] private Vector3 _origin;
-        [SerializeField] private string _obstacleTag = "FlowFieldObstacle";
-        [SerializeField] private float _obstaclePadding = 0.45f;
 
         private bool[] _blocked = System.Array.Empty<bool>();
 
@@ -63,24 +61,39 @@ namespace SHIN.FlowField
             if (_blocked.Length != count)
                 _blocked = new bool[count];
 
-            var half = new Vector3(_cellSize * _obstaclePadding, 0.5f, _cellSize * _obstaclePadding);
-            for (var y = 0; y < _height; y++)
-            {
-                for (var x = 0; x < _width; x++)
-                {
-                    var center = CellCenter(x, y) + Vector3.up * 0.5f;
-                    var hits = Physics.OverlapBox(center, half);
-                    var blocked = false;
-                    for (var i = 0; i < hits.Length; i++)
-                    {
-                        if (hits[i].CompareTag(_obstacleTag))
-                        {
-                            blocked = true;
-                            break;
-                        }
-                    }
+            System.Array.Clear(_blocked, 0, count);
 
-                    _blocked[Index(x, y)] = blocked;
+            var blocks = FindObjectsByType<FlowFieldBlock>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+            for (var i = 0; i < blocks.Length; i++)
+            {
+                if (blocks[i] == null || !blocks[i].isActiveAndEnabled)
+                    continue;
+
+                if (!blocks[i].TryGetBlockBounds(out var bounds))
+                    continue;
+
+                MarkBlocked(bounds);
+            }
+        }
+
+        private void MarkBlocked(Bounds bounds)
+        {
+            var min = bounds.min - _origin;
+            var max = bounds.max - _origin;
+
+            var x0 = Mathf.FloorToInt(min.x / _cellSize);
+            var x1 = Mathf.CeilToInt(max.x / _cellSize) - 1;
+            var y0 = Mathf.FloorToInt(min.z / _cellSize);
+            var y1 = Mathf.CeilToInt(max.z / _cellSize) - 1;
+
+            for (var y = y0; y <= y1; y++)
+            {
+                for (var x = x0; x <= x1; x++)
+                {
+                    if (!InBounds(x, y))
+                        continue;
+
+                    _blocked[Index(x, y)] = true;
                 }
             }
         }
